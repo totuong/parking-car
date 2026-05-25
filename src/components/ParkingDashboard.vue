@@ -1,11 +1,64 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick, computed, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, computed, watch, inject } from 'vue'
 import { 
   Car, Compass, Activity, Server, AlertTriangle, Play, Pause, RefreshCw, 
   Video, Eye, TrendingUp, Clock, PieChart, ShieldAlert, Cpu, CheckCircle2, ChevronRight, Zap
 } from 'lucide-vue-next'
 import Chart from 'chart.js/auto'
 import ThreeParkingLot from './ThreeParkingLot.vue'
+
+const isDark = inject<any>('isDark')
+const locale = inject<any>('locale')
+const t = inject<any>('t')
+
+function translateLogMessage(msg: string): string {
+  if (msg.includes("Smart parking digital twin engine initialized")) {
+    return t('mile_d1')
+  }
+  if (msg.includes("All 4 CCTV camera feeds online")) {
+    return t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Tất cả 4 kênh camera CCTV đã trực tuyến (Full HD).' : 'All 4 CCTV camera feeds online (Full HD).'
+  }
+  if (msg.includes("EV Fast Charger connected at Slot")) {
+    const slotPart = msg.split("Slot ")[1] || ""
+    return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Đã kết nối sạc nhanh EV tại ô đỗ ' : 'EV Fast Charger connected at Slot ') + slotPart
+  }
+  if (msg.includes("Occupancy exceeded 50% threshold")) {
+    return t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Tỷ lệ đỗ xe đã vượt ngưỡng 50%. Đang giám sát lưu lượng.' : 'Occupancy exceeded 50% threshold. Monitoring traffic.'
+  }
+  if (msg.includes("Vehicle Detected:")) {
+    const colorAndType = msg.replace("Vehicle Detected: ", "").split(" parked successfully")[0] || ""
+    const slotId = msg.split("Slot ")[1] || ""
+    return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Phát Hiện Xe: ' : 'Vehicle Detected: ') + colorAndType + (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? ' đỗ xe thành công tại ô ' : ' parked successfully in Slot ') + slotId
+  }
+  if (msg.includes("Vehicle Departed: Slot")) {
+    const slotId = msg.split("Slot ")[1]?.split(" has been")[0] || ""
+    const colorAndType = msg.split("(")[1]?.split(" exited")[0] || ""
+    return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Xe Rời Bãi: Ô đỗ ' : 'Vehicle Departed: Slot ') + slotId + (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? ' đã được giải phóng (' : ' has been vacated (') + colorAndType + (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? ' đi ra).' : ' exited).')
+  }
+  if (msg.includes("Simulation engine ACTIVATED")) {
+    return t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Hệ thống mô phỏng dòng xe hoạt động.' : 'Simulation engine ACTIVATED.'
+  }
+  if (msg.includes("Simulation engine PAUSED")) {
+    return t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Hệ thống mô phỏng dòng xe tạm dừng.' : 'Simulation engine PAUSED.'
+  }
+  if (msg.includes("Security Force Vacation: Manual slot override on Slot")) {
+    const slotId = msg.split("Slot ")[1] || ""
+    return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Cưỡng Chế Giải Phóng: Ghi đè trạng thái tại ô ' : 'Security Force Vacation: Manual slot override on Slot ') + slotId
+  }
+  if (msg.includes("Security Force Booking: Manual slot override on Slot")) {
+    const slotId = msg.split("Slot ")[1] || ""
+    return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Cưỡng Chế Đặt Chỗ: Ghi đè trạng thái tại ô ' : 'Security Force Booking: Manual slot override on Slot ') + slotId
+  }
+  if (msg.includes("Focused telemetry camera on Slot")) {
+    const slotId = msg.split("Slot ")[1] || ""
+    return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Đã khóa camera đo lường vào ô ' : 'Focused telemetry camera on Slot ') + slotId
+  }
+  if (msg.includes("Main display switched to Live CCTV Channel")) {
+    const chan = msg.split("Channel ")[1] || ""
+    return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Màn hình chính chuyển sang Live CCTV Kênh ' : 'Main display switched to Live CCTV Channel ') + chan
+  }
+  return msg
+}
 
 type Slot = {
   id: string
@@ -165,8 +218,8 @@ function simulateArrival() {
     }
   }
 
-  // Schedule next arrival
-  const nextDelay = 8000 + Math.random() * 8000 // 8-16s
+  // Schedule next arrival (slowed down from 8-16s to 24-48s for high fidelity realistic pace)
+  const nextDelay = 24000 + Math.random() * 24000
   arrivalTimer = window.setTimeout(simulateArrival, nextDelay)
 }
 
@@ -195,8 +248,8 @@ function simulateDeparture() {
     updateChartsTelemetry()
   }
 
-  // Schedule next departure
-  const nextDelay = 10000 + Math.random() * 10000 // 10-20s
+  // Schedule next departure (slowed down from 10-20s to 28-56s for high fidelity realistic pace)
+  const nextDelay = 28000 + Math.random() * 28000
   departureTimer = window.setTimeout(simulateDeparture, nextDelay)
 }
 
@@ -263,20 +316,24 @@ function viewCCTVFeed(idx: number) {
 
 // Render dynamic dashboard analytics charts
 function initCharts() {
+  const textColor = isDark.value ? '#94a3b8' : '#475569'
+  const gridColor = isDark.value ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)'
+  const legendColor = isDark.value ? '#e2e8f0' : '#1e293b'
+
   // 1. Weekly Traffic Chart (Line)
   if (trafficChartCanvas.value) {
     const ctx = trafficChartCanvas.value.getContext('2d')
     if (ctx) {
       const gradient = ctx.createLinearGradient(0, 0, 0, 200)
-      gradient.addColorStop(0, 'rgba(6, 182, 212, 0.4)')
+      gradient.addColorStop(0, isDark.value ? 'rgba(6, 182, 212, 0.4)' : 'rgba(6, 182, 212, 0.25)')
       gradient.addColorStop(1, 'rgba(6, 182, 212, 0.0)')
 
       trafficChart = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+          labels: locale.value === 'vi' ? ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
           datasets: [{
-            label: 'Daily Vehicles Visited',
+            label: locale.value === 'vi' ? 'Lượt xe truy cập hàng ngày' : 'Daily Vehicles Visited',
             data: [120, 154, 138, 162, 185, 140, 142],
             borderColor: '#06b6d4',
             borderWidth: 3,
@@ -292,8 +349,8 @@ function initCharts() {
           maintainAspectRatio: false,
           plugins: { legend: { display: false } },
           scales: {
-            x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
-            y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8', font: { size: 10 } } }
+            x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } },
+            y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } }
           }
         }
       })
@@ -321,7 +378,7 @@ function initCharts() {
           plugins: {
             legend: { 
               position: 'right', 
-              labels: { color: '#e2e8f0', font: { size: 10 }, boxWidth: 10 } 
+              labels: { color: legendColor, font: { size: 10 }, boxWidth: 10 } 
             }
           },
           cutout: '70%'
@@ -350,8 +407,8 @@ function initCharts() {
           maintainAspectRatio: false,
           plugins: { legend: { display: false } },
           scales: {
-            x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } },
-            y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8', font: { size: 10 } } }
+            x: { grid: { display: false }, ticks: { color: textColor, font: { size: 10 } } },
+            y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } }
           }
         }
       })
@@ -396,6 +453,17 @@ function updateChartsTelemetry() {
   }
 }
 
+// Watch theme and language changes to recreate charts
+watch([isDark, locale], () => {
+  if (trafficChart) trafficChart.destroy()
+  if (distributionChart) distributionChart.destroy()
+  if (peakHoursChart) peakHoursChart.destroy()
+  nextTick(() => {
+    initCharts()
+    updateChartsTelemetry()
+  })
+})
+
 onMounted(() => {
   initSlots()
   
@@ -424,78 +492,118 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6 text-slate-100 font-sans">
+  <div class="flex flex-col gap-6 font-sans transition-colors duration-300" :class="isDark ? 'text-slate-100' : 'text-slate-800'">
     
     <!-- SECTION A: KPI Stat Cards -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
       
       <!-- Total Slots -->
-      <div class="relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60 p-5 backdrop-blur-md shadow-lg group hover:border-cyan-500/30 transition duration-300">
+      <div 
+        class="relative overflow-hidden rounded-xl border p-5 backdrop-blur-md shadow-lg group transition duration-300"
+        :class="isDark 
+          ? 'border-slate-800 bg-slate-950/60 hover:border-cyan-500/30' 
+          : 'border-slate-200 bg-white/70 hover:border-cyan-500/30 shadow-[0_4px_20px_rgba(0,0,0,0.01)]'"
+      >
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-500">Total Slots</p>
-            <h3 class="text-2xl font-black font-mono text-slate-100 mt-1">40</h3>
+            <p class="text-xs font-bold uppercase tracking-wider" :class="isDark ? 'text-slate-500' : 'text-slate-400'">{{ t('total_slots') }}</p>
+            <h3 class="text-2xl font-black font-mono mt-1" :class="isDark ? 'text-slate-100' : 'text-slate-800'">40</h3>
           </div>
-          <div class="p-3 rounded-lg bg-cyan-950/50 border border-cyan-500/20 text-cyan-400 group-hover:scale-110 transition duration-300">
+          <div 
+            class="p-3 rounded-lg group-hover:scale-110 transition duration-300"
+            :class="isDark 
+              ? 'bg-cyan-950/50 border border-cyan-500/20 text-cyan-400' 
+              : 'bg-cyan-50 border border-cyan-200 text-cyan-600'"
+          >
             <Compass class="w-5 h-5" />
           </div>
         </div>
-        <div class="mt-3 flex items-center gap-1 text-[10px] text-slate-500 font-semibold uppercase">
-          <CheckCircle2 class="w-3.5 h-3.5 text-emerald-400 inline" /> Dual deck infrastructure
+        <div class="mt-3 flex items-center gap-1 text-[10px] font-semibold uppercase" :class="isDark ? 'text-slate-500' : 'text-slate-400'">
+          <CheckCircle2 class="w-3.5 h-3.5 text-emerald-500 inline animate-pulse" /> {{ t('dual_deck') }}
         </div>
         <!-- Pulse effect line -->
         <span class="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent"></span>
       </div>
 
       <!-- Occupied Slots -->
-      <div class="relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60 p-5 backdrop-blur-md shadow-lg group hover:border-orange-500/30 transition duration-300">
+      <div 
+        class="relative overflow-hidden rounded-xl border p-5 backdrop-blur-md shadow-lg group transition duration-300"
+        :class="isDark 
+          ? 'border-slate-800 bg-slate-950/60 hover:border-orange-500/30' 
+          : 'border-slate-200 bg-white/70 hover:border-orange-500/30 shadow-[0_4px_20px_rgba(0,0,0,0.01)]'"
+      >
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-500">Occupied Slots</p>
-            <h3 class="text-2xl font-black font-mono text-orange-400 mt-1 animate-pulse">{{ occupiedCount }}</h3>
+            <p class="text-xs font-bold uppercase tracking-wider" :class="isDark ? 'text-slate-500' : 'text-slate-400'">{{ t('occupied_slots') }}</p>
+            <h3 class="text-2xl font-black font-mono text-orange-500 mt-1 animate-pulse">{{ occupiedCount }}</h3>
           </div>
-          <div class="p-3 rounded-lg bg-orange-950/50 border border-orange-500/20 text-orange-400 group-hover:scale-110 transition duration-300">
+          <div 
+            class="p-3 rounded-lg group-hover:scale-110 transition duration-300"
+            :class="isDark 
+              ? 'bg-orange-950/50 border border-orange-500/20 text-orange-400' 
+              : 'bg-orange-50 border border-orange-200 text-orange-600'"
+          >
             <Car class="w-5 h-5" />
           </div>
         </div>
-        <div class="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400">
+        <div class="mt-3 flex items-center gap-1.5 text-[10px]">
           <span class="w-2 h-2 rounded-full bg-orange-500 inline-block animate-ping"></span>
-          <span class="font-semibold uppercase text-slate-500">Real-time occupancy synced</span>
+          <span class="font-semibold uppercase" :class="isDark ? 'text-slate-500' : 'text-slate-400'">{{ t('realtime_synced') }}</span>
         </div>
         <span class="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-orange-500/50 to-transparent"></span>
       </div>
 
       <!-- Occupancy Rate -->
-      <div class="relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60 p-5 backdrop-blur-md shadow-lg group hover:border-indigo-500/30 transition duration-300">
+      <div 
+        class="relative overflow-hidden rounded-xl border p-5 backdrop-blur-md shadow-lg group transition duration-300"
+        :class="isDark 
+          ? 'border-slate-800 bg-slate-950/60 hover:border-indigo-500/30' 
+          : 'border-slate-200 bg-white/70 hover:border-indigo-500/30 shadow-[0_4px_20px_rgba(0,0,0,0.01)]'"
+      >
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-500">Occupancy Rate</p>
-            <h3 class="text-2xl font-black font-mono text-indigo-400 mt-1">{{ occupancyRate }}%</h3>
+            <p class="text-xs font-bold uppercase tracking-wider" :class="isDark ? 'text-slate-500' : 'text-slate-400'">{{ t('occupancy_rate') }}</p>
+            <h3 class="text-2xl font-black font-mono text-indigo-500 mt-1">{{ occupancyRate }}%</h3>
           </div>
-          <div class="p-3 rounded-lg bg-indigo-950/50 border border-indigo-500/20 text-indigo-400 group-hover:scale-110 transition duration-300">
+          <div 
+            class="p-3 rounded-lg group-hover:scale-110 transition duration-300"
+            :class="isDark 
+              ? 'bg-indigo-950/50 border border-indigo-500/20 text-indigo-400' 
+              : 'bg-indigo-50 border-indigo-200 text-indigo-600'"
+          >
             <Activity class="w-5 h-5" />
           </div>
         </div>
         <!-- Simple progress bar -->
-        <div class="mt-4.5 w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
+        <div class="mt-4.5 w-full rounded-full h-1.5 overflow-hidden" :class="isDark ? 'bg-slate-900' : 'bg-slate-100'">
           <div class="bg-gradient-to-r from-indigo-500 to-cyan-400 h-full rounded-full transition-all duration-500" :style="{ width: `${occupancyRate}%` }"></div>
         </div>
         <span class="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-indigo-500/50 to-transparent"></span>
       </div>
 
       <!-- Alerts count -->
-      <div class="relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60 p-5 backdrop-blur-md shadow-lg group hover:border-red-500/30 transition duration-300">
+      <div 
+        class="relative overflow-hidden rounded-xl border p-5 backdrop-blur-md shadow-lg group transition duration-300"
+        :class="isDark 
+          ? 'border-slate-800 bg-slate-950/60 hover:border-red-500/30' 
+          : 'border-slate-200 bg-white/70 hover:border-red-500/30 shadow-[0_4px_20px_rgba(0,0,0,0.01)]'"
+      >
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-500">Active Alerts</p>
+            <p class="text-xs font-bold uppercase tracking-wider" :class="isDark ? 'text-slate-500' : 'text-slate-400'">{{ t('active_alerts') }}</p>
             <h3 class="text-2xl font-black font-mono text-red-500 mt-1" :class="{ 'animate-bounce': alertCount > 0 }">{{ alertCount }}</h3>
           </div>
-          <div class="p-3 rounded-lg bg-red-950/50 border border-red-500/20 text-red-500 group-hover:scale-110 transition duration-300">
+          <div 
+            class="p-3 rounded-lg group-hover:scale-110 transition duration-300"
+            :class="isDark 
+              ? 'bg-red-950/50 border border-red-500/20 text-red-500' 
+              : 'bg-red-50 border border-red-200 text-red-600'"
+          >
             <ShieldAlert class="w-5 h-5" />
           </div>
         </div>
-        <div class="mt-3 flex items-center gap-1 text-[10px] text-slate-500 font-semibold uppercase">
-          <AlertTriangle class="w-3.5 h-3.5 text-red-500 inline" /> Security protocols stable
+        <div class="mt-3 flex items-center gap-1 text-[10px] font-semibold uppercase" :class="isDark ? 'text-slate-500' : 'text-slate-400'">
+          <AlertTriangle class="w-3.5 h-3.5 text-red-500 inline animate-pulse" /> {{ t('security_stable') }}
         </div>
         <span class="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-red-500/50 to-transparent"></span>
       </div>
@@ -507,26 +615,34 @@ onBeforeUnmount(() => {
       
       <!-- 3D Map (Span 3 on large screens) -->
       <div class="xl:col-span-3 flex flex-col gap-4">
-        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center justify-between border-b pb-3" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
           <div>
-            <h2 class="text-lg font-black tracking-wider uppercase text-cyan-400 flex items-center gap-2">
-              <Cpu class="w-5 h-5" /> Interactive 3D Digital Twin Model
+            <h2 
+              class="text-lg font-black tracking-wider uppercase flex items-center gap-2 transition-colors duration-300"
+              :class="isDark ? 'text-cyan-400' : 'text-cyan-600'"
+            >
+              <Cpu class="w-5 h-5 animate-pulse" /> {{ t('twin_map_title') }}
             </h2>
-            <p class="text-xs text-slate-500">Real-time WebGL space replication model of Deck-01.</p>
+            <p class="text-xs" :class="isDark ? 'text-slate-500' : 'text-slate-500'">{{ t('twin_map_desc') }}</p>
           </div>
           <div class="flex items-center gap-3">
             <!-- Simulation Status indicator -->
-            <div class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-900 border border-slate-800 text-[10px] uppercase font-bold text-slate-400">
+            <div 
+              class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded border text-[10px] uppercase font-bold transition-all duration-300"
+              :class="isDark ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-600'"
+            >
               <span class="w-2 h-2 rounded-full inline-block" :class="simulationActive ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'"></span>
-              SIMULATION: {{ simulationActive ? 'Active' : 'Paused' }}
+              {{ simulationActive ? t('sim_active') : t('sim_paused') }}
             </div>
             <button 
               @click="toggleSimulation" 
-              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold select-none cursor-pointer transition"
-              :class="simulationActive ? 'bg-red-950/20 border-red-500/30 text-red-400 hover:bg-red-900/20' : 'bg-emerald-950/20 border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/20'"
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold select-none cursor-pointer transition active:scale-95 shadow-sm"
+              :class="simulationActive 
+                ? (isDark ? 'bg-red-950/20 border-red-500/30 text-red-400 hover:bg-red-900/20' : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100') 
+                : (isDark ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/20' : 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100')"
             >
               <component :is="simulationActive ? Pause : Play" class="w-3.5 h-3.5" /> 
-              {{ simulationActive ? 'Pause Sim' : 'Resume Sim' }}
+              {{ simulationActive ? t('pause_sim') : t('resume_sim') }}
             </button>
           </div>
         </div>
@@ -541,87 +657,114 @@ onBeforeUnmount(() => {
 
       <!-- Holographic Interactive Telemetry Inspector Panel -->
       <div class="flex flex-col gap-4">
-        <div class="border-b border-slate-800 pb-3">
-          <h2 class="text-lg font-black tracking-wider uppercase text-cyan-400 flex items-center gap-2">
-            <Activity class="w-5 h-5" /> Slot Telemetry
+        <div class="border-b pb-3" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
+          <h2 
+            class="text-lg font-black tracking-wider uppercase flex items-center gap-2 transition-colors duration-300"
+            :class="isDark ? 'text-cyan-400' : 'text-cyan-600'"
+          >
+            <Activity class="w-5 h-5" /> {{ t('slot_telemetry') }}
           </h2>
-          <p class="text-xs text-slate-500">Select any slot in the 3D map to view details.</p>
+          <p class="text-xs" :class="isDark ? 'text-slate-500' : 'text-slate-400'">{{ t('slot_telemetry_desc') }}</p>
         </div>
 
         <!-- Telemetry Panel Body -->
-        <div class="flex-1 rounded-xl border border-slate-800 bg-slate-950/60 p-5 backdrop-blur-md shadow-lg flex flex-col justify-between min-h-[380px]">
+        <div 
+          class="flex-1 rounded-xl border p-5 backdrop-blur-md shadow-lg flex flex-col justify-between min-h-[380px] transition-all duration-300"
+          :class="isDark 
+            ? 'border-slate-800 bg-slate-950/60 text-slate-100' 
+            : 'border-slate-200 bg-white/70 text-slate-800 shadow-[0_4px_20px_rgba(0,0,0,0.01)]'"
+        >
           
           <template v-if="selectedSlot">
             <div>
-              <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <span class="text-sm font-black text-cyan-400">SLOT {{ selectedSlot.id }}</span>
+              <div class="flex items-center justify-between border-b pb-3" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
+                <span class="text-sm font-black" :class="isDark ? 'text-cyan-400' : 'text-cyan-600'">SLOT {{ selectedSlot.id }}</span>
                 <span 
-                  class="px-2 py-0.5 rounded text-[10px] font-black uppercase border"
+                  class="px-2 py-0.5 rounded text-[10px] font-black uppercase border transition-colors duration-300"
                   :class="selectedSlot.occupied ? 'bg-orange-950 border-orange-500/30 text-orange-400' : 'bg-emerald-950 border-emerald-500/30 text-emerald-400'"
                 >
-                  {{ selectedSlot.occupied ? 'Occupied' : 'Vacant' }}
+                  {{ selectedSlot.occupied ? t('occupied') : t('vacant') }}
                 </span>
               </div>
 
               <!-- Occupied Status details -->
               <div v-if="selectedSlot.occupied" class="flex flex-col gap-3 mt-4">
-                <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-800 flex items-center gap-3">
-                  <Car class="w-8 h-8 text-cyan-400" />
+                <div 
+                  class="rounded-lg p-3 border flex items-center gap-3 transition-colors duration-300"
+                  :class="isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-slate-50 border-slate-150'"
+                >
+                  <Car class="w-8 h-8" :class="isDark ? 'text-cyan-400' : 'text-cyan-600'" />
                   <div>
-                    <h4 class="text-xs font-bold text-slate-400 uppercase">Vehicle Telemetry</h4>
-                    <p class="text-sm font-black text-white mt-0.5">{{ selectedSlot.carColor }} {{ selectedSlot.carType }}</p>
+                    <h4 class="text-xs font-bold uppercase" :class="isDark ? 'text-slate-400' : 'text-slate-500'">{{ t('vehicle_telemetry') }}</h4>
+                    <p class="text-sm font-black mt-0.5" :class="isDark ? 'text-white' : 'text-slate-800'">{{ selectedSlot.carColor }} {{ selectedSlot.carType }}</p>
                   </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-3 font-mono text-[10px] text-slate-400">
-                  <div class="bg-slate-900/30 p-2.5 rounded border border-slate-800">
-                    <span class="text-slate-500 block uppercase mb-1">Parked At</span>
-                    <span class="font-bold text-slate-300">
+                <div class="grid grid-cols-2 gap-3 font-mono text-[10px]">
+                  <div 
+                    class="p-2.5 rounded border transition-colors duration-300"
+                    :class="isDark ? 'bg-slate-900/30 border-slate-800 text-slate-400' : 'bg-slate-50/50 border-slate-150 text-slate-600'"
+                  >
+                    <span class="text-slate-500 block uppercase mb-1">{{ t('parked_at') }}</span>
+                    <span class="font-bold" :class="isDark ? 'text-slate-300' : 'text-slate-700'">
                       {{ selectedSlot.timestamp ? new Date(selectedSlot.timestamp).toLocaleTimeString() : '—' }}
                     </span>
                   </div>
-                  <div class="bg-slate-900/30 p-2.5 rounded border border-slate-800">
-                    <span class="text-slate-500 block uppercase mb-1">Duration</span>
-                    <span class="font-bold text-cyan-400">
-                      {{ selectedSlot.timestamp ? Math.round((Date.now() - selectedSlot.timestamp) / 60000) : 0 }} mins
+                  <div 
+                    class="p-2.5 rounded border transition-colors duration-300"
+                    :class="isDark ? 'bg-slate-900/30 border-slate-800 text-slate-400' : 'bg-slate-50/50 border-slate-150 text-slate-600'"
+                  >
+                    <span class="text-slate-500 block uppercase mb-1">{{ t('duration') }}</span>
+                    <span class="font-bold text-cyan-600">
+                      {{ selectedSlot.timestamp ? Math.round((Date.now() - selectedSlot.timestamp) / 60000) : 0 }} {{ locale === 'vi' ? 'phút' : 'mins' }}
                     </span>
                   </div>
                 </div>
 
                 <!-- EV fast charging overlay if EV -->
-                <div v-if="selectedSlot.carType === 'EV'" class="bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-3 flex flex-col gap-2 mt-2">
-                  <div class="flex items-center justify-between text-xs text-emerald-400 font-extrabold uppercase">
-                    <span class="flex items-center gap-1"><Zap class="w-3.5 h-3.5 fill-emerald-400" /> charging</span>
+                <div 
+                  v-if="selectedSlot.carType === 'EV'" 
+                  class="border rounded-lg p-3 flex flex-col gap-2 mt-2 transition-all duration-300"
+                  :class="isDark 
+                    ? 'bg-emerald-950/30 border-emerald-500/20 text-emerald-400' 
+                    : 'bg-emerald-50/50 border-emerald-200 text-emerald-600'"
+                >
+                  <div class="flex items-center justify-between text-xs font-extrabold uppercase">
+                    <span class="flex items-center gap-1"><Zap class="w-3.5 h-3.5 fill-emerald-500" :class="isDark ? 'fill-emerald-400' : 'fill-emerald-500'" /> {{ t('charging') }}</span>
                     <span>84%</span>
                   </div>
-                  <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                  <div class="w-full h-1.5 rounded-full overflow-hidden" :class="isDark ? 'bg-slate-900' : 'bg-slate-200'">
                     <div class="bg-emerald-500 h-full w-[84%] rounded-full animate-pulse"></div>
                   </div>
-                  <span class="text-[9px] text-slate-500">Fast Charger Model EC-30. Max output 120kW.</span>
+                  <span class="text-[9px] text-slate-550 text-slate-500">{{ t('charger_desc') }}</span>
                 </div>
               </div>
 
               <!-- Vacant Status details -->
               <div v-else class="flex flex-col items-center justify-center py-12 text-slate-500">
                 <Compass class="w-12 h-12 text-slate-700 animate-spin" style="animation-duration: 20s" />
-                <p class="text-xs font-bold uppercase tracking-wider mt-4">Space is Empty</p>
-                <p class="text-[10px] text-slate-600 text-center mt-1">Ready for incoming vehicle sensor triggers.</p>
+                <p class="text-xs font-bold uppercase tracking-wider mt-4" :class="isDark ? 'text-slate-400' : 'text-slate-650 text-slate-600'">{{ t('space_empty') }}</p>
+                <p class="text-[10px] text-slate-500 text-center mt-1">{{ t('space_empty_desc') }}</p>
               </div>
             </div>
 
             <!-- Manual override action buttons -->
-            <div class="border-t border-slate-800 pt-4 flex flex-col gap-2 mt-6">
+            <div class="border-t pt-4 flex flex-col gap-2 mt-6" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
               <button 
                 @click="manualToggleSlot(selectedSlot.id)"
-                class="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-bold cursor-pointer select-none text-slate-300 transition"
+                class="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold cursor-pointer select-none transition border active:scale-95 shadow-sm"
+                :class="isDark 
+                  ? 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300' 
+                  : 'bg-slate-100 hover:bg-slate-250 border-slate-200 text-slate-750 text-slate-700'"
               >
-                <RefreshCw class="w-3.5 h-3.5 text-cyan-400" /> Force State Toggle
+                <RefreshCw class="w-3.5 h-3.5 text-cyan-600" /> {{ t('force_toggle') }}
               </button>
               <button 
                 @click="selectedSlot = null"
-                class="w-full px-3 py-2 rounded-lg text-slate-600 hover:text-slate-400 text-[10px] uppercase font-bold tracking-wider text-center select-none cursor-pointer"
+                class="w-full px-3 py-2 rounded-lg text-[10px] uppercase font-bold tracking-wider text-center select-none cursor-pointer"
+                :class="isDark ? 'text-slate-600 hover:text-slate-400' : 'text-slate-400 hover:text-slate-600'"
               >
-                Deselect telemetry
+                {{ t('deselect_telemetry') }}
               </button>
             </div>
 
@@ -629,12 +772,15 @@ onBeforeUnmount(() => {
           <template v-else>
             <!-- No select placeholder -->
             <div class="flex-1 flex flex-col items-center justify-center py-8 text-center select-none">
-              <div class="relative w-16 h-16 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-center text-slate-600 mb-4 shadow-inner">
-                <Server class="w-7 h-7 text-cyan-600/60 animate-pulse" />
+              <div 
+                class="relative w-16 h-16 rounded-2xl border flex items-center justify-center mb-4 shadow-inner transition-colors duration-300"
+                :class="isDark ? 'bg-slate-900/85 border-slate-800 text-slate-600' : 'bg-slate-100 border-slate-150 text-slate-400'"
+              >
+                <Server class="w-7 h-7 animate-pulse text-cyan-600/60" />
               </div>
-              <p class="text-xs font-black uppercase text-slate-400 tracking-wider">No Telemetry Node Connected</p>
-              <p class="text-[10px] text-slate-500 max-w-[180px] mt-1.5 leading-relaxed">
-                Click on any parking slot in the 3D view to inspect sensors, cameras, and vehicle parameters.
+              <p class="text-xs font-black uppercase tracking-wider" :class="isDark ? 'text-slate-400' : 'text-slate-750 text-slate-700'">{{ t('no_telemetry_connected') }}</p>
+              <p class="text-[10px] text-slate-550 text-slate-500 max-w-[180px] mt-1.5 leading-relaxed font-sans">
+                {{ t('no_telemetry_desc') }}
               </p>
             </div>
           </template>
@@ -648,38 +794,59 @@ onBeforeUnmount(() => {
       
       <!-- CCTV Grid (Span 2) -->
       <div class="lg:col-span-2 flex flex-col gap-4">
-        <div class="border-b border-slate-800 pb-3 flex justify-between items-center">
+        <div class="border-b pb-3 flex justify-between items-center" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
           <div>
-            <h2 class="text-lg font-black tracking-wider uppercase text-cyan-400 flex items-center gap-2">
-              <Video class="w-5 h-5" /> Camera Systems (CCTV)
+            <h2 
+              class="text-lg font-black tracking-wider uppercase flex items-center gap-2 transition-colors duration-300"
+              :class="isDark ? 'text-cyan-400' : 'text-cyan-600'"
+            >
+              <Video class="w-5 h-5" /> {{ t('cctv_title') }}
             </h2>
-            <p class="text-xs text-slate-500">Live artificial intelligent optical parking sensor matrix.</p>
+            <p class="text-xs text-slate-500">{{ t('cctv_desc') }}</p>
           </div>
-          <span class="text-[10px] font-mono font-black text-cyan-500 bg-cyan-950/40 border border-cyan-500/20 px-2 py-0.5 rounded uppercase">
-            HEVC STREAMING (4CH)
+          <span 
+            class="text-[10px] font-mono font-black border px-2 py-0.5 rounded uppercase transition-colors duration-300"
+            :class="isDark 
+              ? 'text-cyan-400 bg-cyan-950/40 border-cyan-500/20' 
+              : 'text-cyan-600 bg-cyan-50 border-cyan-200'"
+          >
+            {{ t('cctv_streaming') }}
           </span>
         </div>
 
         <div class="grid grid-cols-2 gap-4">
           <!-- Fake CCTV Feed 1 -->
           <div 
-            v-for="(cam, idx) in ['Camera A01', 'Entrance Cam', 'Exit Gate', 'Zone B Cam']" 
+            v-for="(camKey, idx) in ['cctv_cam_a01', 'cctv_entrance_cam', 'cctv_exit_gate', 'cctv_zone_b_cam']" 
             :key="idx"
-            class="group relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950 h-[140px] shadow-lg cursor-pointer hover:border-cyan-500/30 transition duration-300"
+            class="group relative overflow-hidden rounded-xl border h-[140px] shadow-lg cursor-pointer transition duration-300"
+            :class="isDark 
+              ? 'border-slate-800 bg-slate-950 hover:border-cyan-500/30' 
+              : 'border-slate-200 bg-white hover:border-cyan-500/40'"
             @click="viewCCTVFeed(idx)"
           >
             <!-- Camera Name Tag overlay -->
-            <div class="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-950/80 border border-slate-800 text-[9px] font-bold text-slate-300">
-              <Eye class="w-3 h-3 text-cyan-400" /> {{ cam }}
+            <div 
+              class="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded border text-[9px] font-bold transition-all duration-300"
+              :class="isDark 
+                ? 'bg-slate-950/80 border-slate-850 text-slate-300' 
+                : 'bg-slate-50/90 border-slate-200 text-slate-700'"
+            >
+              <Eye class="w-3 h-3 text-cyan-500" /> {{ t(camKey) }}
             </div>
 
             <!-- Blink REC overlay -->
-            <div class="absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-950/80 border border-slate-800 text-[9px] font-bold">
+            <div 
+              class="absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded border text-[9px] font-bold transition-all duration-300"
+              :class="isDark 
+                ? 'bg-slate-950/80 border-slate-850' 
+                : 'bg-slate-50/90 border-slate-200'"
+            >
               <span class="relative flex h-1.5 w-1.5">
                 <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                 <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
               </span>
-              <span class="text-red-400 font-extrabold uppercase">REC</span>
+              <span class="text-red-500 font-extrabold uppercase">{{ t('cctv_rec') }}</span>
             </div>
 
             <!-- Static noise/CCTV effect overlay -->
@@ -691,13 +858,16 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- CCTV Feed Graphic rendering -->
-            <div class="w-full h-full flex flex-col items-center justify-center bg-slate-950 relative">
+            <div class="w-full h-full flex flex-col items-center justify-center relative transition-colors duration-300" :class="isDark ? 'bg-slate-950' : 'bg-slate-50/50'">
               <!-- Holographic schematic -->
               <div class="absolute w-20 h-20 rounded-full border border-cyan-500/5 opacity-5 flex items-center justify-center animate-spin" style="animation-duration: 40s">
                 <Compass class="w-10 h-10" />
               </div>
-              <div class="text-[10px] font-black uppercase tracking-widest text-slate-600 font-mono group-hover:text-cyan-400 transition duration-300 z-20">
-                CH 0{{ idx + 1 }} LIVE
+              <div 
+                class="text-[10px] font-black uppercase tracking-widest font-mono transition duration-300 z-20"
+                :class="isDark ? 'text-slate-600 group-hover:text-cyan-400' : 'text-slate-400 group-hover:text-cyan-600'"
+              >
+                {{ t('cctv_live') }} 0{{ idx + 1 }}
               </div>
               <!-- CCTV scanning interference lines -->
               <span class="absolute w-full h-[1px] bg-cyan-500/10 top-0 left-0 animate-scanline"></span>
@@ -708,40 +878,50 @@ onBeforeUnmount(() => {
 
       <!-- Realtime Event Logger Activity Feed -->
       <div class="flex flex-col gap-4">
-        <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
-          <h2 class="text-lg font-black tracking-wider uppercase text-cyan-400 flex items-center gap-2">
-            <Activity class="w-5 h-5" /> Activity Log
+        <div class="border-b pb-3 flex items-center justify-between" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
+          <h2 
+            class="text-lg font-black tracking-wider uppercase flex items-center gap-2 transition-colors duration-300"
+            :class="isDark ? 'text-cyan-400' : 'text-cyan-600'"
+          >
+            <Activity class="w-5 h-5" /> {{ t('activity_log') }}
           </h2>
-          <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Live Feeds</span>
+          <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{{ t('live_feeds') }}</span>
         </div>
 
-        <div class="flex-1 rounded-xl border border-slate-800 bg-slate-950/60 p-4 backdrop-blur-md shadow-lg flex flex-col justify-between min-h-[300px]">
+        <div 
+          class="flex-1 rounded-xl border p-4 backdrop-blur-md shadow-lg flex flex-col justify-between min-h-[300px] transition-all duration-300"
+          :class="isDark 
+            ? 'border-slate-800 bg-slate-950/60' 
+            : 'border-slate-200 bg-white/70 text-slate-800 shadow-[0_4px_20px_rgba(0,0,0,0.01)]'"
+        >
           <div 
             ref="logsContainerRef"
-            class="flex-1 overflow-y-auto max-h-[250px] flex flex-col gap-2.5 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent pr-1"
+            class="flex-1 overflow-y-auto max-h-[250px] flex flex-col gap-2.5 scrollbar-thin scrollbar-track-transparent pr-1"
+            :class="isDark ? 'scrollbar-thumb-slate-800' : 'scrollbar-thumb-slate-200'"
           >
             <div 
               v-for="log in logs" 
               :key="log.id"
-              class="flex items-start gap-2.5 text-[10px] border-b border-slate-900/60 pb-2 last:border-0"
+              class="flex items-start gap-2.5 text-[10px] pb-2 last:border-0"
+              :class="isDark ? 'border-b border-slate-900/60' : 'border-b border-slate-100'"
             >
-              <span class="font-mono text-slate-600 font-bold mt-0.5">{{ log.time }}</span>
+              <span class="font-mono text-slate-650 text-slate-500 font-bold mt-0.5">{{ log.time }}</span>
               
               <!-- Color Tags based on Log Type -->
               <span 
                 class="px-1.5 py-0.2 rounded font-black tracking-widest uppercase text-[8px] shrink-0 mt-0.5 border"
                 :class="{
-                  'bg-cyan-950/50 border-cyan-500/20 text-cyan-400': log.type === 'info',
-                  'bg-orange-950/50 border-orange-500/20 text-orange-400': log.type === 'alert',
-                  'bg-emerald-950/50 border-emerald-500/20 text-emerald-400': log.type === 'charge',
-                  'bg-red-950/50 border-red-500/20 text-red-400': log.type === 'security',
-                  'bg-indigo-950/50 border-indigo-500/20 text-indigo-400': log.type === 'system'
+                  'bg-cyan-950/50 border-cyan-500/20 text-cyan-500': log.type === 'info',
+                  'bg-orange-950/50 border-orange-500/20 text-orange-500': log.type === 'alert',
+                  'bg-emerald-950/50 border-emerald-500/20 text-emerald-500': log.type === 'charge',
+                  'bg-red-950/50 border-red-500/20 text-red-500': log.type === 'security',
+                  'bg-indigo-950/50 border-indigo-500/20 text-indigo-500': log.type === 'system'
                 }"
               >
                 {{ log.type }}
               </span>
 
-              <span class="text-slate-300 leading-relaxed">{{ log.message }}</span>
+              <span class="leading-relaxed transition-colors duration-300" :class="isDark ? 'text-slate-300' : 'text-slate-600'">{{ translateLogMessage(log.message) }}</span>
             </div>
           </div>
         </div>
@@ -753,9 +933,17 @@ onBeforeUnmount(() => {
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       
       <!-- Traffic line chart -->
-      <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 backdrop-blur-md shadow-lg flex flex-col gap-4">
-        <h3 class="text-xs font-black tracking-widest uppercase text-cyan-400 flex items-center gap-1.5 border-b border-slate-900 pb-2">
-          <TrendingUp class="w-4.5 h-4.5" /> Weekly Vehicles traffic
+      <div 
+        class="rounded-xl border p-5 backdrop-blur-md shadow-lg flex flex-col gap-4 transition-all duration-300"
+        :class="isDark 
+          ? 'border-slate-800 bg-slate-950/60' 
+          : 'border-slate-200 bg-white/70 shadow-[0_4px_20px_rgba(0,0,0,0.01)]'"
+      >
+        <h3 
+          class="text-xs font-black tracking-widest uppercase flex items-center gap-1.5 pb-2 transition-all duration-300"
+          :class="isDark ? 'text-cyan-400 border-b border-slate-900' : 'text-cyan-600 border-b border-slate-100'"
+        >
+          <TrendingUp class="w-4.5 h-4.5" /> {{ t('chart_traffic') }}
         </h3>
         <div class="relative h-[200px] w-full">
           <canvas ref="trafficChartCanvas"></canvas>
@@ -763,9 +951,17 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Vehicle types breakdown doughnut chart -->
-      <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 backdrop-blur-md shadow-lg flex flex-col gap-4">
-        <h3 class="text-xs font-black tracking-widest uppercase text-cyan-400 flex items-center gap-1.5 border-b border-slate-900 pb-2">
-          <PieChart class="w-4.5 h-4.5" /> Vehicle Type Distribution
+      <div 
+        class="rounded-xl border p-5 backdrop-blur-md shadow-lg flex flex-col gap-4 transition-all duration-300"
+        :class="isDark 
+          ? 'border-slate-800 bg-slate-950/60' 
+          : 'border-slate-200 bg-white/70 shadow-[0_4px_20px_rgba(0,0,0,0.01)]'"
+      >
+        <h3 
+          class="text-xs font-black tracking-widest uppercase flex items-center gap-1.5 pb-2 transition-all duration-300"
+          :class="isDark ? 'text-cyan-400 border-b border-slate-900' : 'text-cyan-600 border-b border-slate-100'"
+        >
+          <PieChart class="w-4.5 h-4.5" /> {{ t('chart_distribution') }}
         </h3>
         <div class="relative h-[200px] w-full flex items-center justify-center">
           <canvas ref="distributionChartCanvas"></canvas>
@@ -773,9 +969,17 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Peak parking hours bar chart -->
-      <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 backdrop-blur-md shadow-lg flex flex-col gap-4">
-        <h3 class="text-xs font-black tracking-widest uppercase text-cyan-400 flex items-center gap-1.5 border-b border-slate-900 pb-2">
-          <Clock class="w-4.5 h-4.5" /> Peak Parking Hours
+      <div 
+        class="rounded-xl border p-5 backdrop-blur-md shadow-lg flex flex-col gap-4 transition-all duration-300"
+        :class="isDark 
+          ? 'border-slate-800 bg-slate-950/60' 
+          : 'border-slate-200 bg-white/70 shadow-[0_4px_20px_rgba(0,0,0,0.01)]'"
+      >
+        <h3 
+          class="text-xs font-black tracking-widest uppercase flex items-center gap-1.5 pb-2 transition-all duration-300"
+          :class="isDark ? 'text-cyan-400 border-b border-slate-900' : 'text-cyan-600 border-b border-slate-100'"
+        >
+          <Clock class="w-4.5 h-4.5" /> {{ t('chart_peak') }}
         </h3>
         <div class="relative h-[200px] w-full">
           <canvas ref="peakHoursChartCanvas"></canvas>
@@ -823,7 +1027,7 @@ onBeforeUnmount(() => {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: #cbd5e1;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {

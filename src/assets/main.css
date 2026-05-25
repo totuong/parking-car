@@ -1,2 +1,10 @@
 @import './base.css';
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", "Inter", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+}
