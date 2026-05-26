@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, provide } from "vue";
-import Button from "primevue/button";
 import Header from "./components/layout/Header.vue";
 import Footer from "./components/layout/Footer.vue";
 import Body from "./components/Body.vue";
@@ -40,7 +39,7 @@ const handleRefresh = () => {
     :class="isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'"
   >
     <Header>
-      <template #actions>
+      <!-- <template #actions>
         <button
           @click="handleRefresh"
           class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer select-none transition shadow-md active:scale-95"
@@ -50,7 +49,7 @@ const handleRefresh = () => {
         >
           <i class="pi pi-refresh text-[10px] animate-spin" style="animation-duration: 4s"></i> {{ t('telemetry_reset') }}
         </button>
-      </template>
+      </template> -->
     </Header>
     <Body />
     <Footer />

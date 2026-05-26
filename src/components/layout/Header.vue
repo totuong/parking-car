@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, inject } from 'vue'
 import { Activity, Bell, Shield, Cpu, Sun, Moon } from 'lucide-vue-next'
+import { Icon } from '@iconify/vue';
 
 const isDark = inject<any>('isDark')
 const toggleTheme = inject<any>('toggleTheme')
@@ -50,14 +51,14 @@ onBeforeUnmount(() => {
           >
             {{ t('app_title') }}
           </h1>
-          <span 
+          <!-- <span 
             class="px-1.5 py-0.5 text-[9px] font-black tracking-widest rounded uppercase transition-colors duration-300"
             :class="isDark 
               ? 'text-cyan-400 bg-cyan-950/50 border border-cyan-500/30' 
               : 'text-cyan-600 bg-cyan-50 border-cyan-200'"
           >
             v1.0.0
-          </span>
+          </span> -->
         </div>
         <p 
           class="text-[10px] font-medium tracking-wide uppercase mt-0.5 flex items-center gap-1.5 transition-colors duration-300"
@@ -120,7 +121,7 @@ onBeforeUnmount(() => {
       </button>
 
       <!-- Language Switcher (EN / VI) -->
-      <button 
+      <!-- <button 
         @click="toggleLocale"
         class="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-xs font-bold select-none cursor-pointer active:scale-95 transition-all duration-300 shadow-sm"
         :class="isDark 
@@ -130,10 +131,15 @@ onBeforeUnmount(() => {
       >
         <span class="text-xs leading-none">{{ locale === 'vi' ? '🇬🇧' : '🇻🇳' }}</span>
         <span class="text-[9px] uppercase tracking-wider font-extrabold ml-1">{{ locale === 'vi' ? 'EN' : 'VI' }}</span>
-      </button>
+      </button> -->
 
+        <button @click="toggleLocale"
+        class="p-1 ml-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+        :title="locale === 'vi' ? 'Switch to English' : 'Chuyển sang Tiếng Việt'">
+        <Icon :icon="locale === 'vi' ? 'flag:vn-4x3' : 'flag:us-4x3'" class="w-6 h-6 rounded-sm shadow-sm" />
+      </button>
       <!-- Slots for extra custom actions -->
-      <slot name="actions"></slot>
+      <!-- <slot name="actions"></slot> -->
 
       <!-- Notification Bell -->
       <button 

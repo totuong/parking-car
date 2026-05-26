@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, nextTick, computed, watch, inject } from 'vue'
+import { Slot, LogEntry } from '../module/type'
 import { 
   Car, Compass, Activity, Server, AlertTriangle, Play, Pause, RefreshCw, 
   Video, Eye, TrendingUp, Clock, PieChart, ShieldAlert, Cpu, CheckCircle2, ChevronRight, Zap
@@ -58,21 +59,6 @@ function translateLogMessage(msg: string): string {
     return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Màn hình chính chuyển sang Live CCTV Kênh ' : 'Main display switched to Live CCTV Channel ') + chan
   }
   return msg
-}
-
-type Slot = {
-  id: string
-  occupied: boolean
-  carType?: string
-  carColor?: string
-  timestamp?: number
-}
-
-type LogEntry = {
-  id: string
-  time: string
-  type: 'info' | 'alert' | 'charge' | 'security' | 'system'
-  message: string
 }
 
 // 40 Parking Slots: Rows A, B, C, D (10 each)
