@@ -109,24 +109,27 @@ function getSlotCoords(slotId: string): { x: number; y: number; z: number; rotY:
   const row = slotId.charAt(0)
   const col = parseInt(slotId.substring(1), 10)
   
-  // Columns 1..10 map to X = -14.4 + (col - 1) * 3.2
-  const x = -14.4 + (col - 1) * 3.2
+  // Columns 1..14 map to X centered symmetrically around 0
+  const x = (col - 7.5) * 3.2
   const y = 0.05
   let z = 0
   let rotY = 0
   
   if (row === 'A') {
-    z = -11.5
+    z = -10.5
     rotY = 0 // facing south
   } else if (row === 'B') {
-    z = -3.5
+    z = -2.5
     rotY = Math.PI // facing north
   } else if (row === 'C') {
-    z = 3.5
+    z = 2.5
     rotY = 0 // facing south
   } else if (row === 'D') {
-    z = 11.5
+    z = 10.5
     rotY = Math.PI // facing north
+  } else if (row === 'E') {
+    z = 15.5
+    rotY = 0 // facing south
   }
   
   return { x, y, z, rotY }
@@ -134,7 +137,10 @@ function getSlotCoords(slotId: string): { x: number; y: number; z: number; rotY:
 
 function getLaneZ(slotId: string): number {
   const row = slotId.charAt(0)
-  return (row === 'A' || row === 'B') ? -7.5 : 7.5
+  if (row === 'A' || row === 'B') return -6.5
+  if (row === 'C' || row === 'D') return 6.5
+  if (row === 'E') return 19.5
+  return 6.5
 }
 
 // 3D Scene Initialization
@@ -151,8 +157,8 @@ function initThree() {
 
   // 2. Camera
   camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000)
-  camera.position.set(0, 24, 28) // High isometric angle view
-
+  camera.position.set(0, 32, 42) // High isometric angle view
+ 
   // 3. Renderer
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" })
   renderer.setSize(width, height)
@@ -162,7 +168,7 @@ function initThree() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping
   renderer.toneMappingExposure = 1.0
   containerRef.value.appendChild(renderer.domElement)
-
+ 
   // 4. Controls
   controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
@@ -170,7 +176,7 @@ function initThree() {
   controls.maxPolarAngle = Math.PI / 2 - 0.05 // Don't let users go under the floor
   controls.minDistance = 10
   controls.maxDistance = 60
-  controls.target.set(0, 0, 0)
+  controls.target.set(0, 0, 2.5)
 
   // 5. Lights
   ambientLight = new THREE.AmbientLight(0x1e1b4b, 0.8) // Dark indigo base fill light
@@ -231,22 +237,22 @@ function initThree() {
 function createGround() {
   if (!scene) return
 
-  // Concrete floor slab (expanded to 46x34 for spacious visual design)
-  const floorGeo = new THREE.BoxGeometry(46, 0.4, 34)
+  // Concrete floor slab (expanded to 61x50 for spacious 5-row visual design, centered at Z=2.5)
+  const floorGeo = new THREE.BoxGeometry(61, 0.4, 50)
   const floorMat = new THREE.MeshStandardMaterial({
     color: 0x0f172a, // Dark slate
     roughness: 0.65,
     metalness: 0.2
   })
   const floor = new THREE.Mesh(floorGeo, floorMat)
-  floor.position.y = -0.2
+  floor.position.set(0, -0.2, 2.5)
   floor.receiveShadow = true
   scene.add(floor)
   floorMesh = floor
 
   // Sleek Grid Helper for futuristic visual guidelines
-  const gridHelper = new THREE.GridHelper(50, 50, 0x0ea5e9, 0x1e293b)
-  gridHelper.position.y = 0.01
+  const gridHelper = new THREE.GridHelper(70, 70, 0x0ea5e9, 0x1e293b)
+  gridHelper.position.set(0, 0.01, 2.5)
   gridHelper.material.opacity = 0.3
   gridHelper.material.transparent = true
   scene.add(gridHelper)
@@ -272,97 +278,145 @@ function createGround() {
     opacity: 0.6
   })
 
-  // 1. Horizontal Roads (distributors, 3.2m wide)
-  const road1 = new THREE.Mesh(new THREE.PlaneGeometry(36, 3.2), asphaltMat)
+  // 1. Horizontal Roads (distributors, 3.2m wide, length 48m to span between connector roads)
+  const road0 = new THREE.Mesh(new THREE.PlaneGeometry(48, 3.2), asphaltMat)
+  road0.rotation.x = -Math.PI / 2
+  road0.position.set(0, 0.012, -14.5)
+  road0.receiveShadow = true
+  scene.add(road0)
+
+  const road1 = new THREE.Mesh(new THREE.PlaneGeometry(48, 3.2), asphaltMat)
   road1.rotation.x = -Math.PI / 2
-  road1.position.set(0, 0.012, -7.5)
+  road1.position.set(0, 0.012, -6.5)
   road1.receiveShadow = true
   scene.add(road1)
 
-  const road2 = new THREE.Mesh(new THREE.PlaneGeometry(36, 3.2), asphaltMat)
+  const road2 = new THREE.Mesh(new THREE.PlaneGeometry(48, 3.2), asphaltMat)
   road2.rotation.x = -Math.PI / 2
-  road2.position.set(0, 0.012, 7.5)
+  road2.position.set(0, 0.012, 6.5)
   road2.receiveShadow = true
   scene.add(road2)
 
-  // 2. Vertical Connector Roads (3.2m wide)
-  const connectorL = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 18.2), asphaltMat)
+  const road3 = new THREE.Mesh(new THREE.PlaneGeometry(48, 3.2), asphaltMat)
+  road3.rotation.x = -Math.PI / 2
+  road3.position.set(0, 0.012, 19.5)
+  road3.receiveShadow = true
+  scene.add(road3)
+
+  // 2. Vertical Connector Roads (3.2m wide, length 37.2m to span from Road 0 to Road 3)
+  const connectorL = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 37.2), asphaltMat)
   connectorL.rotation.x = -Math.PI / 2
-  connectorL.position.set(-17.5, 0.012, 0)
+  connectorL.position.set(-24.0, 0.012, 2.5)
   connectorL.receiveShadow = true
   scene.add(connectorL)
 
-  const connectorR = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 18.2), asphaltMat)
+  const connectorR = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 37.2), asphaltMat)
   connectorR.rotation.x = -Math.PI / 2
-  connectorR.position.set(17.5, 0.012, 0)
+  connectorR.position.set(24.0, 0.012, 2.5)
   connectorR.receiveShadow = true
   scene.add(connectorR)
 
-  // 3. Entrance and Exit pathways
+  // 3. Entrance and Exit pathways (shifted outwards because connector roads shifted)
   const entranceRoad = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 3.2), asphaltMat)
   entranceRoad.rotation.x = -Math.PI / 2
-  entranceRoad.position.set(-20.25, 0.012, 2.0)
+  entranceRoad.position.set(-26.75, 0.012, 2.0)
   entranceRoad.receiveShadow = true
   scene.add(entranceRoad)
 
   const exitRoad = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 3.2), asphaltMat)
   exitRoad.rotation.x = -Math.PI / 2
-  exitRoad.position.set(20.25, 0.012, -2.0)
+  exitRoad.position.set(26.75, 0.012, -2.0)
   exitRoad.receiveShadow = true
   scene.add(exitRoad)
 
   // 4. Yellow Dashed Center Line Markings
-  // Road 1
-  for (let x = -16.5; x <= 16.5; x += 3.0) {
+  // Road 0
+  for (let x = -22.5; x <= 22.5; x += 3.0) {
     const dash = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.06), yellowLineMat)
     dash.rotation.x = -Math.PI / 2
-    dash.position.set(x, 0.015, -7.5)
+    dash.position.set(x, 0.015, -14.5)
+    scene.add(dash)
+  }
+  // Road 1
+  for (let x = -22.5; x <= 22.5; x += 3.0) {
+    const dash = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.06), yellowLineMat)
+    dash.rotation.x = -Math.PI / 2
+    dash.position.set(x, 0.015, -6.5)
     scene.add(dash)
   }
   // Road 2
-  for (let x = -16.5; x <= 16.5; x += 3.0) {
+  for (let x = -22.5; x <= 22.5; x += 3.0) {
     const dash = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.06), yellowLineMat)
     dash.rotation.x = -Math.PI / 2
-    dash.position.set(x, 0.015, 7.5)
+    dash.position.set(x, 0.015, 6.5)
+    scene.add(dash)
+  }
+  // Road 3
+  for (let x = -22.5; x <= 22.5; x += 3.0) {
+    const dash = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.06), yellowLineMat)
+    dash.rotation.x = -Math.PI / 2
+    dash.position.set(x, 0.015, 19.5)
     scene.add(dash)
   }
   // Connector Left
-  for (let z = -7.5; z <= 7.5; z += 3.0) {
+  for (let z = -14.5; z <= 19.5; z += 3.0) {
     const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 1.2), yellowLineMat)
     dash.rotation.x = -Math.PI / 2
-    dash.position.set(-17.5, 0.015, z)
+    dash.position.set(-24.0, 0.015, z)
     scene.add(dash)
   }
   // Connector Right
-  for (let z = -7.5; z <= 7.5; z += 3.0) {
+  for (let z = -14.5; z <= 19.5; z += 3.0) {
     const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 1.2), yellowLineMat)
     dash.rotation.x = -Math.PI / 2
-    dash.position.set(17.5, 0.015, z)
+    dash.position.set(24.0, 0.015, z)
     scene.add(dash)
   }
 
   // 5. White Border Line Markings
+  // Road 0 Borders
+  const border0A = new THREE.Mesh(new THREE.PlaneGeometry(48, 0.05), whiteLineMat)
+  border0A.rotation.x = -Math.PI / 2
+  border0A.position.set(0, 0.014, -16.1)
+  scene.add(border0A)
+
+  const border0B = new THREE.Mesh(new THREE.PlaneGeometry(48, 0.05), whiteLineMat)
+  border0B.rotation.x = -Math.PI / 2
+  border0B.position.set(0, 0.014, -12.9)
+  scene.add(border0B)
+
   // Road 1 Borders
-  const border1A = new THREE.Mesh(new THREE.PlaneGeometry(36, 0.05), whiteLineMat)
+  const border1A = new THREE.Mesh(new THREE.PlaneGeometry(48, 0.05), whiteLineMat)
   border1A.rotation.x = -Math.PI / 2
-  border1A.position.set(0, 0.014, -9.1)
+  border1A.position.set(0, 0.014, -8.1)
   scene.add(border1A)
 
-  const border1B = new THREE.Mesh(new THREE.PlaneGeometry(36, 0.05), whiteLineMat)
+  const border1B = new THREE.Mesh(new THREE.PlaneGeometry(48, 0.05), whiteLineMat)
   border1B.rotation.x = -Math.PI / 2
-  border1B.position.set(0, 0.014, -5.9)
+  border1B.position.set(0, 0.014, -4.9)
   scene.add(border1B)
 
   // Road 2 Borders
-  const border2A = new THREE.Mesh(new THREE.PlaneGeometry(36, 0.05), whiteLineMat)
+  const border2A = new THREE.Mesh(new THREE.PlaneGeometry(48, 0.05), whiteLineMat)
   border2A.rotation.x = -Math.PI / 2
-  border2A.position.set(0, 0.014, 5.9)
+  border2A.position.set(0, 0.014, 4.9)
   scene.add(border2A)
 
-  const border2B = new THREE.Mesh(new THREE.PlaneGeometry(36, 0.05), whiteLineMat)
+  const border2B = new THREE.Mesh(new THREE.PlaneGeometry(48, 0.05), whiteLineMat)
   border2B.rotation.x = -Math.PI / 2
-  border2B.position.set(0, 0.014, 9.1)
+  border2B.position.set(0, 0.014, 8.1)
   scene.add(border2B)
+
+  // Road 3 Borders
+  const border3A = new THREE.Mesh(new THREE.PlaneGeometry(48, 0.05), whiteLineMat)
+  border3A.rotation.x = -Math.PI / 2
+  border3A.position.set(0, 0.014, 17.9)
+  scene.add(border3A)
+
+  const border3B = new THREE.Mesh(new THREE.PlaneGeometry(48, 0.05), whiteLineMat)
+  border3B.rotation.x = -Math.PI / 2
+  border3B.position.set(0, 0.014, 21.1)
+  scene.add(border3B)
 }
 
 // Global groups and references for dynamic lampposts
@@ -374,14 +428,16 @@ function buildLampposts() {
   lamppostsGroup.clear()
   lamppostLights.length = 0
 
-  // 6 positions for lampposts shifted outwards on our wider deck
+  // 8 positions for lampposts shifted symmetrically on our wider and deeper deck
   const positions = [
-    { x: -18, z: -15.0 },
-    { x: 0, z: -15.0 },
-    { x: 18, z: -15.0 },
-    { x: -18, z: 15.0 },
-    { x: 0, z: 15.0 },
-    { x: 18, z: 15.0 }
+    { x: -24, z: -16.5 },
+    { x: 0, z: -16.5 },
+    { x: 24, z: -16.5 },
+    { x: -24, z: 2.5 },
+    { x: 24, z: 2.5 },
+    { x: -24, z: 21.5 },
+    { x: 0, z: 21.5 },
+    { x: 24, z: 21.5 }
   ]
 
   const poleMat = new THREE.MeshStandardMaterial({
@@ -462,7 +518,7 @@ function buildEntranceGate() {
   if (!scene) return
 
   const gateGroup = new THREE.Group()
-  gateGroup.position.set(-19.5, 0, 0) // Placement next to entrance road
+  gateGroup.position.set(-26.0, 0, 0) // Placement next to entrance road
 
   const isNight = timeOfDay.value < 6.0 || timeOfDay.value > 18.0
 
@@ -658,7 +714,7 @@ function buildExitGate() {
   if (!scene) return
 
   const gateGroup = new THREE.Group()
-  gateGroup.position.set(19.5, 0, 0) // Placement next to exit road
+  gateGroup.position.set(26.0, 0, 0) // Placement next to exit road
 
   const isNightVal = timeOfDay.value < 6.0 || timeOfDay.value > 18.0
 
@@ -854,9 +910,9 @@ function buildCompanyBuilding() {
   if (!scene) return
 
   const buildingGroup = new THREE.Group()
-  // Main office building shifted further back to Z = -24.5 (instead of -17.5) to give spacious spacing
+  // Main office building shifted further back to Z = -25.5 (instead of -28.5) to give spacious spacing
   const bW = 34, bH = 10, bD = 6
-  buildingGroup.position.set(0, 0, -24.5)
+  buildingGroup.position.set(0, 0, -25.5)
 
   // 1. Steel structural frame (Black pillars and horizontal beams)
   const frameMat = new THREE.MeshStandardMaterial({
@@ -1247,10 +1303,10 @@ function triggerEntryAnimation(slot: Slot) {
   const coords = getSlotCoords(slot.id)
   const laneZ = getLaneZ(slot.id)
 
-  // Entrance Spawn: X=-23, Z=2.0 (aligned with entry gate road centered at Z=2.0)
-  const p0 = new THREE.Vector3(-23, 0.05, 2.0)
-  const p1 = new THREE.Vector3(-17.5, 0.05, 2.0) // Connector road center
-  const p2 = new THREE.Vector3(-17.5, 0.05, laneZ)
+  // Entrance Spawn: X=-29.5, Z=2.0 (aligned with entry gate road centered at Z=2.0)
+  const p0 = new THREE.Vector3(-29.5, 0.05, 2.0)
+  const p1 = new THREE.Vector3(-24.0, 0.05, 2.0) // Connector road center
+  const p2 = new THREE.Vector3(-24.0, 0.05, laneZ)
   const p3 = new THREE.Vector3(coords.x, 0.05, laneZ)
   const p4 = new THREE.Vector3(coords.x, 0.05, coords.z)
 
@@ -1289,9 +1345,9 @@ function triggerExitAnimation(slot: Slot) {
 
   const p0 = new THREE.Vector3(coords.x, 0.05, coords.z)
   const p1 = new THREE.Vector3(coords.x, 0.05, laneZ)
-  const p2 = new THREE.Vector3(17.5, 0.05, laneZ)
-  const p3 = new THREE.Vector3(17.5, 0.05, -2.0) // Connector road center to exit gate Z=-2.0
-  const p4 = new THREE.Vector3(23, 0.05, -2.0) // Exit disappearing point at X=23
+  const p2 = new THREE.Vector3(24.0, 0.05, laneZ)
+  const p3 = new THREE.Vector3(24.0, 0.05, -2.0) // Connector road center to exit gate Z=-2.0
+  const p4 = new THREE.Vector3(29.5, 0.05, -2.0) // Exit disappearing point at X=29.5
 
   const path = [p0, p1, p2, p3, p4]
 
@@ -1457,9 +1513,9 @@ function updateCarAnimations(delta: number) {
     // 2. Automated Entrance Barrier Control (Contactless RFID entry - no halt required!)
     if (anim.isEntering && currentSegment === 0) {
       const carX = anim.carGroup.position.x
-      if (carX >= -21.5 && carX <= -18.0) {
+      if (carX >= -28.0 && carX <= -24.5) {
         barrierAngleTarget = -Math.PI / 2 // Lift barrier up as car approaches
-      } else if (carX > -18.0) {
+      } else if (carX > -24.5) {
         barrierAngleTarget = 0.0 // Close barrier after car passes
       }
     }
@@ -1467,9 +1523,9 @@ function updateCarAnimations(delta: number) {
     // Automated Exit Barrier Control (Contactless RFID exit - no halt required!)
     if (!anim.isEntering && currentSegment === 3) {
       const carX = anim.carGroup.position.x
-      if (carX >= 17.8 && carX <= 21.0) {
+      if (carX >= 24.5 && carX <= 28.0) {
         exitBarrierAngleTarget = Math.PI / 2 // Lift barrier up as car approaches
-      } else if (carX > 21.0) {
+      } else if (carX > 28.0) {
         exitBarrierAngleTarget = 0.0 // Close barrier after car passes
       }
     }
@@ -1612,24 +1668,24 @@ onBeforeUnmount(() => {
 // Camera preset controls helpers
 function resetCamera() {
   if (controls && camera) {
-    camera.position.set(0, 24, 28)
-    controls.target.set(0, 0, 0)
+    camera.position.set(0, 32, 42)
+    controls.target.set(0, 0, 2.5)
     controls.update()
   }
 }
 
 function setTopDown() {
   if (controls && camera) {
-    camera.position.set(0, 32, 0.01)
-    controls.target.set(0, 0, 0)
+    camera.position.set(0, 48, 2.51)
+    controls.target.set(0, 0, 2.5)
     controls.update()
   }
 }
 
 function setEntranceView() {
   if (controls && camera) {
-    camera.position.set(-23, 6, 8)
-    controls.target.set(-14, 0, 0)
+    camera.position.set(-29, 8, 8)
+    controls.target.set(-20, 0, 2)
     controls.update()
   }
 }

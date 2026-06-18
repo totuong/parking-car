@@ -61,9 +61,7 @@ function translateLogMessage(msg: string): string {
   return msg
 }
 
-// 40 Parking Slots: Rows A, B, C, D (10 each)
-const rows = ['A', 'B', 'C', 'D']
-const cols = Array.from({ length: 10 }, (_, i) => i + 1)
+// 56 Parking Slots: Rows A, B, C, D, E with custom slot distributions
 const slots = ref<Slot[]>([])
 
 // Telemetry & KPI Stats
@@ -122,18 +120,32 @@ const occupancyRate = computed(() => {
 // Initialize slots
 function initSlots() {
   const s: Slot[] = []
-  for (const r of rows) {
-    for (const c of cols) {
-      s.push({
-        id: `${r}${c < 10 ? '0' + c : c}`,
-        occupied: false
-      })
-    }
+  
+  // Row A: A02 -> A14 (13 slots, A01 is missing)
+  for (let c = 2; c <= 14; c++) {
+    s.push({ id: `A${c < 10 ? '0' + c : c}`, occupied: false })
   }
+  // Row B: B02 -> B12 (11 slots, B01 is missing)
+  for (let c = 2; c <= 12; c++) {
+    s.push({ id: `B${c < 10 ? '0' + c : c}`, occupied: false })
+  }
+  // Row C: C01 -> C12 (12 slots)
+  for (let c = 1; c <= 12; c++) {
+    s.push({ id: `C${c < 10 ? '0' + c : c}`, occupied: false })
+  }
+  // Row D: D01 -> D10 (10 slots)
+  for (let c = 1; c <= 10; c++) {
+    s.push({ id: `D${c < 10 ? '0' + c : c}`, occupied: false })
+  }
+  // Row E: E01 -> E10 (10 slots)
+  for (let c = 1; c <= 10; c++) {
+    s.push({ id: `E${c < 10 ? '0' + c : c}`, occupied: false })
+  }
+  
   slots.value = s
 
   // Seed initial parking state (approx 45% full)
-  const initialOccupancy = 18
+  const initialOccupancy = 25
   for (let i = 0; i < initialOccupancy; i++) {
     const vacantList = slots.value.filter(slot => !slot.occupied)
     if (vacantList.length === 0) break
@@ -493,7 +505,7 @@ onBeforeUnmount(() => {
         <div class="flex items-center justify-between">
           <div>
             <p class="text-xs font-bold uppercase tracking-wider" :class="isDark ? 'text-slate-500' : 'text-slate-400'">{{ t('total_slots') }}</p>
-            <h3 class="text-2xl font-black font-mono mt-1" :class="isDark ? 'text-slate-100' : 'text-slate-800'">40</h3>
+            <h3 class="text-2xl font-black font-mono mt-1" :class="isDark ? 'text-slate-100' : 'text-slate-800'">{{ slots.length }}</h3>
           </div>
           <div 
             class="p-3 rounded-lg group-hover:scale-110 transition duration-300"
