@@ -79,6 +79,7 @@ let floorMesh: THREE.Mesh | null = null
 const slotsGroup = new THREE.Group()
 const carsGroup = new THREE.Group()
 const animCarsGroup = new THREE.Group()
+const treesGroup = new THREE.Group()
 
 // Interactive selection
 const raycaster = new THREE.Raycaster()
@@ -217,9 +218,13 @@ function initThree() {
   scene.add(slotsGroup)
   scene.add(carsGroup)
   scene.add(animCarsGroup)
+  scene.add(treesGroup)
 
   // Create initial slot outlines
   buildParkingSlots()
+
+  // Create decorative trees
+  buildTrees()
 
   // Synchronize initial cars
   syncCars()
@@ -987,6 +992,111 @@ function buildCompanyBuilding() {
   scene.add(buildingGroup)
 }
 
+function buildTrees() {
+  if (!scene) return
+  treesGroup.clear()
+
+  // Materials
+  const planterMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b, // Slate 800 dark metallic planter
+    roughness: 0.5,
+    metalness: 0.8
+  })
+
+  const neonRingMat = new THREE.MeshBasicMaterial({
+    color: 0x10b981, // Cyber green glowing ring
+    transparent: true,
+    opacity: 0.8
+  })
+
+  const soilMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a, // Dark slate soil
+    roughness: 0.9
+  })
+
+  const trunkMat = new THREE.MeshStandardMaterial({
+    color: 0x3e2723, // Brown trunk
+    roughness: 0.9
+  })
+
+  const leafMat = new THREE.MeshStandardMaterial({
+    color: 0x059669, // Emerald green leaves
+    roughness: 0.6
+  })
+
+  // Tree locations at the requested junctions:
+  // 1. Between B5, B6, C5, C6 (Midpoint between col 5 and 6 at Z=0.0)
+  // 2. Between B8, B9, C8, C9 (Midpoint between col 8 and 9 at Z=0.0)
+  // 3. Between B11, B12, C11, C12 (Midpoint between col 11 and 12 at Z=0.0)
+  // 4. Between D2, D3, E2, E3 (Midpoint between col 2 and 3 at Z=13.0)
+  // 5. Between D8, D9, E8, E9 (Midpoint between col 8 and 9 at Z=13.0)
+  const treePositions = [
+    { x: -6.4, z: 0.0 },
+    { x: 3.2, z: 0.0 },
+    { x: 12.8, z: 0.0 },
+    { x: -16.0, z: 13.0 },
+    { x: 3.2, z: 13.0 }
+  ]
+
+  treePositions.forEach(pos => {
+    const tree = new THREE.Group()
+    tree.position.set(pos.x, 0, pos.z)
+
+    // A. Planter box / pot (Cylinder at the bottom - slim radius to fit in the 0.8m gap)
+    const planterGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.25, 12)
+    const planterMesh = new THREE.Mesh(planterGeo, planterMat)
+    planterMesh.position.y = 0.125
+    planterMesh.castShadow = true
+    planterMesh.receiveShadow = true
+    tree.add(planterMesh)
+
+    // Neon glowing base ring
+    const ringGeo = new THREE.TorusGeometry(0.37, 0.015, 8, 24)
+    const ringMesh = new THREE.Mesh(ringGeo, neonRingMat)
+    ringMesh.rotation.x = Math.PI / 2
+    ringMesh.position.y = 0.02
+    tree.add(ringMesh)
+
+    // Soil inside planter
+    const soilGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.2, 12)
+    const soilMesh = new THREE.Mesh(soilGeo, soilMat)
+    soilMesh.position.y = 0.15
+    tree.add(soilMesh)
+
+    // B. Trunk (Cylinder)
+    const trunkGeo = new THREE.CylinderGeometry(0.05, 0.08, 1.4, 8)
+    const trunkMesh = new THREE.Mesh(trunkGeo, trunkMat)
+    trunkMesh.position.y = 0.7 + 0.25 // starts above planter
+    trunkMesh.castShadow = true
+    trunkMesh.receiveShadow = true
+    tree.add(trunkMesh)
+
+    // C. Foliage / Leaves (overlapping low-poly dodecahedrons)
+    // Leaf sphere 1: Bottom/Center
+    const leavesGeo1 = new THREE.DodecahedronGeometry(0.35, 1)
+    const leaves1 = new THREE.Mesh(leavesGeo1, leafMat)
+    leaves1.position.set(0, 1.3, 0)
+    leaves1.castShadow = true
+    tree.add(leaves1)
+
+    // Leaf sphere 2: Middle/Offset
+    const leavesGeo2 = new THREE.DodecahedronGeometry(0.28, 1)
+    const leaves2 = new THREE.Mesh(leavesGeo2, leafMat)
+    leaves2.position.set(0.08, 1.6, -0.05)
+    leaves2.castShadow = true
+    tree.add(leaves2)
+
+    // Leaf sphere 3: Top/Offset
+    const leavesGeo3 = new THREE.DodecahedronGeometry(0.22, 1)
+    const leaves3 = new THREE.Mesh(leavesGeo3, leafMat)
+    leaves3.position.set(-0.06, 1.8, 0.05)
+    leaves3.castShadow = true
+    tree.add(leaves3)
+
+    treesGroup.add(tree)
+  })
+}
+
 
 function updateSystemTime() {
   if (autoSyncTime.value) {
@@ -1659,6 +1769,7 @@ onBeforeUnmount(() => {
   slotsGroup.clear()
   carsGroup.clear()
   animCarsGroup.clear()
+  treesGroup.clear()
 
   if (renderer) {
     renderer.dispose()
