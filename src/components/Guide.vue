@@ -7,6 +7,7 @@ const t = inject<any>('t')
 </script>
 
 <template>
+  <section id="section-guide" class="section-anchor scroll-mt-6 rounded-2xl transition-shadow duration-300">
   <div class="flex flex-col gap-6 transition-colors duration-300" :class="isDark ? 'text-slate-200' : 'text-slate-800'">
     <div class="border-b pb-4" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
       <h2 
@@ -137,6 +138,7 @@ const t = inject<any>('t')
       </div>
     </div>
   </div>
+  </section>
 </template>
 
 <style scoped>

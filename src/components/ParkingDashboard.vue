@@ -2,11 +2,13 @@
 import { ref, onMounted, onBeforeUnmount, nextTick, computed, watch, inject } from 'vue'
 import { Slot, LogEntry } from '../module/type'
 import { 
-  Car, Compass, Activity, Server, AlertTriangle, Play, Pause, RefreshCw, 
-  Video, Eye, TrendingUp, Clock, PieChart, ShieldAlert, Cpu, CheckCircle2, ChevronRight, Zap
+  Car, Compass, Activity, Server, Play, Pause, RefreshCw,
+  Video, Eye, TrendingUp, Clock, PieChart, Cpu, CheckCircle2, ChevronRight, Zap
 } from 'lucide-vue-next'
 import Chart from 'chart.js/auto'
 import ThreeParkingLot from './ThreeParkingLot.vue'
+import { useParkingRealtime } from '../composables/useParkingRealtime'
+import { fetchParkingAnalytics, type ParkingAnalytics } from '../module/analytics'
 
 const isDark = inject<any>('isDark')
 const locale = inject<any>('locale')
@@ -16,47 +18,50 @@ function translateLogMessage(msg: string): string {
   if (msg.includes("Smart parking digital twin engine initialized")) {
     return t('mile_d1')
   }
+  if (msg.includes("Live CCTV camera feed online")) {
+    return t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? 'Camera CCTV live đã trực tuyến (Full HD).' : 'Live CCTV camera feed online (Full HD).'
+  }
   if (msg.includes("All 4 CCTV camera feeds online")) {
-    return t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Tất cả 4 kênh camera CCTV đã trực tuyến (Full HD).' : 'All 4 CCTV camera feeds online (Full HD).'
+    return t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? 'Camera CCTV live đã trực tuyến (Full HD).' : 'Live CCTV camera feed online (Full HD).'
   }
   if (msg.includes("EV Fast Charger connected at Slot")) {
     const slotPart = msg.split("Slot ")[1] || ""
-    return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Đã kết nối sạc nhanh EV tại ô đỗ ' : 'EV Fast Charger connected at Slot ') + slotPart
+    return (t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? 'Đã kết nối sạc nhanh EV tại ô đỗ ' : 'EV Fast Charger connected at Slot ') + slotPart
   }
   if (msg.includes("Occupancy exceeded 50% threshold")) {
-    return t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Tỷ lệ đỗ xe đã vượt ngưỡng 50%. Đang giám sát lưu lượng.' : 'Occupancy exceeded 50% threshold. Monitoring traffic.'
+    return t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? 'Tỷ lệ đỗ xe đã vượt ngưỡng 50%. Đang giám sát lưu lượng.' : 'Occupancy exceeded 50% threshold. Monitoring traffic.'
   }
   if (msg.includes("Vehicle Detected:")) {
     const colorAndType = msg.replace("Vehicle Detected: ", "").split(" parked successfully")[0] || ""
     const slotId = msg.split("Slot ")[1] || ""
-    return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Phát Hiện Xe: ' : 'Vehicle Detected: ') + colorAndType + (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? ' đỗ xe thành công tại ô ' : ' parked successfully in Slot ') + slotId
+    return (t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? 'Phát Hiện Xe: ' : 'Vehicle Detected: ') + colorAndType + (t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? ' đỗ xe thành công tại ô ' : ' parked successfully in Slot ') + slotId
   }
   if (msg.includes("Vehicle Departed: Slot")) {
     const slotId = msg.split("Slot ")[1]?.split(" has been")[0] || ""
     const colorAndType = msg.split("(")[1]?.split(" exited")[0] || ""
-    return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Xe Rời Bãi: Ô đỗ ' : 'Vehicle Departed: Slot ') + slotId + (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? ' đã được giải phóng (' : ' has been vacated (') + colorAndType + (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? ' đi ra).' : ' exited).')
+    return (t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? 'Xe Rời Bãi: Ô đỗ ' : 'Vehicle Departed: Slot ') + slotId + (t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? ' đã được giải phóng (' : ' has been vacated (') + colorAndType + (t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? ' đi ra).' : ' exited).')
   }
   if (msg.includes("Simulation engine ACTIVATED")) {
-    return t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Hệ thống mô phỏng dòng xe hoạt động.' : 'Simulation engine ACTIVATED.'
+    return t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? 'Hệ thống mô phỏng dòng xe hoạt động.' : 'Simulation engine ACTIVATED.'
   }
   if (msg.includes("Simulation engine PAUSED")) {
-    return t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Hệ thống mô phỏng dòng xe tạm dừng.' : 'Simulation engine PAUSED.'
+    return t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? 'Hệ thống mô phỏng dòng xe tạm dừng.' : 'Simulation engine PAUSED.'
   }
   if (msg.includes("Security Force Vacation: Manual slot override on Slot")) {
     const slotId = msg.split("Slot ")[1] || ""
-    return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Cưỡng Chế Giải Phóng: Ghi đè trạng thái tại ô ' : 'Security Force Vacation: Manual slot override on Slot ') + slotId
+    return (t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? 'Cưỡng Chế Giải Phóng: Ghi đè trạng thái tại ô ' : 'Security Force Vacation: Manual slot override on Slot ') + slotId
   }
   if (msg.includes("Security Force Booking: Manual slot override on Slot")) {
     const slotId = msg.split("Slot ")[1] || ""
-    return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Cưỡng Chế Đặt Chỗ: Ghi đè trạng thái tại ô ' : 'Security Force Booking: Manual slot override on Slot ') + slotId
+    return (t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? 'Cưỡng Chế Đặt Chỗ: Ghi đè trạng thái tại ô ' : 'Security Force Booking: Manual slot override on Slot ') + slotId
   }
   if (msg.includes("Focused telemetry camera on Slot")) {
     const slotId = msg.split("Slot ")[1] || ""
-    return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Đã khóa camera đo lường vào ô ' : 'Focused telemetry camera on Slot ') + slotId
+    return (t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? 'Đã khóa camera đo lường vào ô ' : 'Focused telemetry camera on Slot ') + slotId
   }
   if (msg.includes("Main display switched to Live CCTV Channel")) {
     const chan = msg.split("Channel ")[1] || ""
-    return (t('cctv_streaming') === 'LUỒNG HEVC (4 KÊNH)' ? 'Màn hình chính chuyển sang Live CCTV Kênh ' : 'Main display switched to Live CCTV Channel ') + chan
+    return (t('cctv_streaming') === 'LUỒNG HEVC (1 KÊNH)' ? 'Màn hình chính chuyển sang Live CCTV Kênh ' : 'Main display switched to Live CCTV Channel ') + chan
   }
   return msg
 }
@@ -67,16 +72,18 @@ const slots = ref<Slot[]>([])
 // Telemetry & KPI Stats
 const totalDailyVehicles = ref(142)
 const totalWeeklyVehicles = ref(986)
-const alertCount = ref(2)
-const activeCameras = ref(4)
-const simulationActive = ref(true)
+const activeCameras = ref(1)
+const simulationActive = ref(false)
+
+const { connect, disconnect, liveMode } = useParkingRealtime()
+const mjpegUrl = '/api/stream/mjpeg'
 
 // Selected Slot for Telemetry details
 const selectedSlot = ref<Slot | null>(null)
 const hoveredSlot = ref<Slot | null>(null)
 
 // CCTV state
-const activeCameraFeed = ref<number | null>(null)
+const liveCameraKey = 'cctv_cam_a01'
 
 // Charts Canvas refs
 const trafficChartCanvas = ref<HTMLCanvasElement | null>(null)
@@ -86,11 +93,15 @@ const peakHoursChartCanvas = ref<HTMLCanvasElement | null>(null)
 let trafficChart: Chart | null = null
 let distributionChart: Chart | null = null
 let peakHoursChart: Chart | null = null
+let analyticsTimer: number | undefined
+
+const analyticsData = ref<ParkingAnalytics | null>(null)
+const analyticsLoading = ref(false)
 
 // Activity Feed Log entries
 const logs = ref<LogEntry[]>([
   { id: '1', time: '19:00:05', type: 'system', message: 'Smart parking digital twin engine initialized successfully.' },
-  { id: '2', time: '19:00:12', type: 'info', message: 'All 4 CCTV camera feeds online (Full HD).' },
+  { id: '2', time: '19:00:12', type: 'info', message: 'Live CCTV camera feed online (Full HD).' },
   { id: '3', time: '19:01:45', type: 'charge', message: 'EV Fast Charger connected at Slot C03.' },
   { id: '4', time: '19:02:10', type: 'alert', message: 'Occupancy exceeded 50% threshold. Monitoring traffic.' }
 ])
@@ -144,6 +155,8 @@ function initSlots() {
   
   slots.value = s
 
+  if (liveMode.value) return
+
   // Seed initial parking state (approx 45% full)
   const initialOccupancy = 25
   for (let i = 0; i < initialOccupancy; i++) {
@@ -184,7 +197,7 @@ function addLog(type: LogEntry['type'], message: string) {
 
 // Simulation vehicle arrival
 function simulateArrival() {
-  if (!simulationActive.value) return
+  if (!simulationActive.value || liveMode.value) return
 
   const vacantList = slots.value.filter(s => !s.occupied)
   if (vacantList.length > 0) {
@@ -206,13 +219,9 @@ function simulateArrival() {
       `Vehicle Detected: ${color} ${type} parked successfully in Slot ${slot.id}.`
     )
 
-    // Trigger chart update
-    updateChartsTelemetry()
-
-    // If occupancy is very high, fire alarm
-    if (occupancyRate.value >= 85) {
-      alertCount.value++
-      addLog('alert', `CRITICAL ALERT: Parking Deck occupancy reaches ${occupancyRate.value}%. Staging backup facilities.`)
+    // Trigger chart update in simulation mode only
+    if (!analyticsData.value?.available) {
+      updateChartsTelemetry()
     }
   }
 
@@ -223,7 +232,7 @@ function simulateArrival() {
 
 // Simulation vehicle departure
 function simulateDeparture() {
-  if (!simulationActive.value) return
+  if (!simulationActive.value || liveMode.value) return
 
   const occupiedList = slots.value.filter(s => s.occupied)
   if (occupiedList.length > 5) { // Maintain at least 5 parked cars
@@ -242,8 +251,10 @@ function simulateDeparture() {
       selectedSlot.value = { ...slot }
     }
 
-    // Trigger chart update
-    updateChartsTelemetry()
+    // Trigger chart update in simulation mode only
+    if (!analyticsData.value?.available) {
+      updateChartsTelemetry()
+    }
   }
 
   // Schedule next departure (slowed down from 10-20s to 28-56s for high fidelity realistic pace)
@@ -253,6 +264,7 @@ function simulateDeparture() {
 
 // Toggles simulation running state
 function toggleSimulation() {
+  if (liveMode.value) return
   simulationActive.value = !simulationActive.value
   addLog('system', `Simulation engine ${simulationActive.value ? 'ACTIVATED' : 'PAUSED'}.`)
   
@@ -291,7 +303,9 @@ function manualToggleSlot(slotId: string) {
     selectedSlot.value = { ...slot }
   }
   
-  updateChartsTelemetry()
+  if (!analyticsData.value?.available) {
+    updateChartsTelemetry()
+  }
 }
 
 // Click Slot selection
@@ -306,10 +320,77 @@ function handleHoverSlot(slot: Slot | null) {
   hoveredSlot.value = slot
 }
 
-// CCTV selection popup helper
-function viewCCTVFeed(idx: number) {
-  activeCameraFeed.value = idx
-  addLog('security', `Main display switched to Live CCTV Channel 0${idx + 1}.`)
+async function loadAnalytics() {
+  analyticsLoading.value = true
+  try {
+    analyticsData.value = await fetchParkingAnalytics()
+    if (trafficChart || distributionChart || peakHoursChart) {
+      applyAnalyticsToCharts()
+    }
+  } catch {
+    analyticsData.value = { available: false }
+  } finally {
+    analyticsLoading.value = false
+  }
+}
+
+function zoneColors() {
+  return ['#06b6d4', '#6366f1', '#a855f7', '#f97316', '#10b981']
+}
+
+function applyAnalyticsToCharts() {
+  const data = analyticsData.value
+  if (!data?.available) return
+
+  if (trafficChart && data.traffic_by_minute) {
+    trafficChart.data.labels = data.traffic_by_minute.labels
+    trafficChart.data.datasets = [
+      {
+        label: t('chart_entries'),
+        data: data.traffic_by_minute.entries,
+        borderColor: '#06b6d4',
+        borderWidth: 2,
+        backgroundColor: 'rgba(6, 182, 212, 0.15)',
+        fill: true,
+        tension: 0.35,
+        pointBackgroundColor: '#06b6d4',
+        pointHoverRadius: 5,
+      },
+      {
+        label: t('chart_exits'),
+        data: data.traffic_by_minute.exits,
+        borderColor: '#f97316',
+        borderWidth: 2,
+        backgroundColor: 'rgba(249, 115, 22, 0.1)',
+        fill: true,
+        tension: 0.35,
+        pointBackgroundColor: '#f97316',
+        pointHoverRadius: 5,
+      },
+    ]
+    trafficChart.options.plugins = {
+      legend: {
+        display: true,
+        labels: { color: isDark.value ? '#e2e8f0' : '#1e293b', font: { size: 10 }, boxWidth: 10 },
+      },
+    }
+    trafficChart.update()
+  }
+
+  if (distributionChart && data.occupancy_by_zone) {
+    distributionChart.data.labels = data.occupancy_by_zone.labels.map(
+      (zone) => `${locale.value === 'vi' ? 'Khu' : 'Zone'} ${zone}`
+    )
+    distributionChart.data.datasets[0]!.data = data.occupancy_by_zone.occupied
+    distributionChart.data.datasets[0]!.backgroundColor = zoneColors().slice(0, data.occupancy_by_zone.labels.length)
+    distributionChart.update()
+  }
+
+  if (peakHoursChart && data.slot_turnover) {
+    peakHoursChart.data.labels = data.slot_turnover.labels
+    peakHoursChart.data.datasets[0]!.data = data.slot_turnover.changes
+    peakHoursChart.update()
+  }
 }
 
 // Render dynamic dashboard analytics charts
@@ -318,7 +399,10 @@ function initCharts() {
   const gridColor = isDark.value ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)'
   const legendColor = isDark.value ? '#e2e8f0' : '#1e293b'
 
-  // 1. Weekly Traffic Chart (Line)
+  const traffic = analyticsData.value?.traffic_by_minute
+  const zones = analyticsData.value?.occupancy_by_zone
+  const turnover = analyticsData.value?.slot_turnover
+
   if (trafficChartCanvas.value) {
     const ctx = trafficChartCanvas.value.getContext('2d')
     if (ctx) {
@@ -329,76 +413,104 @@ function initCharts() {
       trafficChart = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: locale.value === 'vi' ? ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-          datasets: [{
-            label: locale.value === 'vi' ? 'Lượt xe truy cập hàng ngày' : 'Daily Vehicles Visited',
-            data: [120, 154, 138, 162, 185, 140, 142],
-            borderColor: '#06b6d4',
-            borderWidth: 3,
-            backgroundColor: gradient,
-            fill: true,
-            tension: 0.4,
-            pointBackgroundColor: '#06b6d4',
-            pointHoverRadius: 7
-          }]
+          labels: traffic?.labels ?? [],
+          datasets: traffic
+            ? [
+                {
+                  label: t('chart_entries'),
+                  data: traffic.entries,
+                  borderColor: '#06b6d4',
+                  borderWidth: 2,
+                  backgroundColor: gradient,
+                  fill: true,
+                  tension: 0.35,
+                  pointBackgroundColor: '#06b6d4',
+                  pointHoverRadius: 5,
+                },
+                {
+                  label: t('chart_exits'),
+                  data: traffic.exits,
+                  borderColor: '#f97316',
+                  borderWidth: 2,
+                  backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                  fill: true,
+                  tension: 0.35,
+                  pointBackgroundColor: '#f97316',
+                  pointHoverRadius: 5,
+                },
+              ]
+            : [{
+                label: t('chart_entries'),
+                data: [],
+                borderColor: '#06b6d4',
+                borderWidth: 2,
+                backgroundColor: gradient,
+                fill: true,
+                tension: 0.35,
+              }],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
+          plugins: {
+            legend: {
+              display: Boolean(traffic),
+              labels: { color: legendColor, font: { size: 10 }, boxWidth: 10 },
+            },
+          },
           scales: {
             x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } },
-            y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } }
-          }
-        }
+            y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } }, beginAtZero: true },
+          },
+        },
       })
     }
   }
 
-  // 2. Vehicle Distribution (Doughnut)
   if (distributionChartCanvas.value) {
     const ctx = distributionChartCanvas.value.getContext('2d')
     if (ctx) {
       distributionChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
-          labels: ['Sedan', 'SUV', 'Truck', 'EV'],
+          labels: zones?.labels.map((zone) => `${locale.value === 'vi' ? 'Khu' : 'Zone'} ${zone}`) ?? [],
           datasets: [{
-            data: [35, 45, 10, 10],
-            backgroundColor: ['#6366f1', '#a855f7', '#f97316', '#10b981'],
+            label: t('chart_occupied'),
+            data: zones?.occupied ?? [],
+            backgroundColor: zoneColors().slice(0, zones?.labels.length ?? 5),
             borderWidth: 0,
-            hoverOffset: 4
-          }]
+            hoverOffset: 4,
+          }],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { 
-              position: 'right', 
-              labels: { color: legendColor, font: { size: 10 }, boxWidth: 10 } 
-            }
+            legend: {
+              position: 'right',
+              labels: { color: legendColor, font: { size: 10 }, boxWidth: 10 },
+            },
           },
-          cutout: '70%'
-        }
+          cutout: '70%',
+        },
       })
     }
   }
 
-  // 3. Peak Parking Hours (Bar)
   if (peakHoursChartCanvas.value) {
     const ctx = peakHoursChartCanvas.value.getContext('2d')
     if (ctx) {
       peakHoursChart = new Chart(ctx, {
         type: 'bar',
         data: {
-          labels: ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'],
+          labels: turnover?.labels ?? [],
           datasets: [{
-            data: [65, 85, 95, 70, 75, 90, 50],
+            label: t('chart_changes'),
+            data: turnover?.changes ?? [],
             backgroundColor: 'rgba(99, 102, 241, 0.85)',
             hoverBackgroundColor: '#6366f1',
-            borderRadius: 4
-          }]
+            borderRadius: 4,
+          }],
         },
         options: {
           responsive: true,
@@ -406,16 +518,16 @@ function initCharts() {
           plugins: { legend: { display: false } },
           scales: {
             x: { grid: { display: false }, ticks: { color: textColor, font: { size: 10 } } },
-            y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } }
-          }
-        }
+            y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } }, beginAtZero: true },
+          },
+        },
       })
     }
   }
 }
 
-// Calculate type ratios from active slots to update Doughnut chart in real-time
 function updateChartsTelemetry() {
+  if (analyticsData.value?.available) return
   if (!distributionChart) return
 
   const typeCounts = { Sedan: 0, SUV: 0, Truck: 0, EV: 0 }
@@ -428,26 +540,16 @@ function updateChartsTelemetry() {
     }
   })
 
-  // Ensure default weights if parking is completely empty
   const total = Object.values(typeCounts).reduce((a, b) => a + b, 0)
   if (total > 0) {
+    distributionChart.data.labels = ['Sedan', 'SUV', 'Truck', 'EV']
     distributionChart.data.datasets[0]!.data = [
       typeCounts.Sedan,
       typeCounts.SUV,
       typeCounts.Truck,
-      typeCounts.EV
+      typeCounts.EV,
     ]
-  } else {
-    distributionChart.data.datasets[0]!.data = [35, 45, 10, 10]
-  }
-  distributionChart.update()
-
-  // Slightly perturb line chart to show live activity
-  if (trafficChart) {
-    const currentData = trafficChart.data.datasets[0]!.data as number[]
-    // Add vehicle to today's count (Sunday)
-    currentData[6] = totalDailyVehicles.value
-    trafficChart.update()
+    distributionChart.update()
   }
 }
 
@@ -458,31 +560,39 @@ watch([isDark, locale], () => {
   if (peakHoursChart) peakHoursChart.destroy()
   nextTick(() => {
     initCharts()
-    updateChartsTelemetry()
+    applyAnalyticsToCharts()
+    if (!analyticsData.value?.available) {
+      updateChartsTelemetry()
+    }
   })
 })
 
 onMounted(() => {
   initSlots()
-  
-  // Brief delay to ensure DOM rendered fully before canvas mount
-  setTimeout(() => {
+  connect(slots)
+
+  setTimeout(async () => {
+    await loadAnalytics()
     initCharts()
-    updateChartsTelemetry()
+    applyAnalyticsToCharts()
+    if (!analyticsData.value?.available) {
+      updateChartsTelemetry()
+    }
   }, 300)
 
-  // Start simulation engines
-  if (simulationActive.value) {
+  analyticsTimer = window.setInterval(loadAnalytics, 30000)
+
+  if (!liveMode.value && simulationActive.value) {
     simulateArrival()
     simulateDeparture()
   }
 })
 
 onBeforeUnmount(() => {
+  disconnect()
   if (arrivalTimer) clearTimeout(arrivalTimer)
   if (departureTimer) clearTimeout(departureTimer)
-  
-  // Clean up ChartJS objects
+  if (analyticsTimer) clearInterval(analyticsTimer)
   if (trafficChart) trafficChart.destroy()
   if (distributionChart) distributionChart.destroy()
   if (peakHoursChart) peakHoursChart.destroy()
@@ -493,7 +603,8 @@ onBeforeUnmount(() => {
   <div class="flex flex-col gap-6 font-sans transition-colors duration-300" :class="isDark ? 'text-slate-100' : 'text-slate-800'">
     
     <!-- SECTION A: KPI Stat Cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <section id="section-overview" class="section-anchor scroll-mt-6 rounded-2xl transition-shadow duration-300">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       
       <!-- Total Slots -->
       <div 
@@ -578,37 +689,12 @@ onBeforeUnmount(() => {
         </div>
         <span class="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-indigo-500/50 to-transparent"></span>
       </div>
-
-      <!-- Alerts count -->
-      <div 
-        class="relative overflow-hidden rounded-xl border p-5 backdrop-blur-md shadow-lg group transition duration-300"
-        :class="isDark 
-          ? 'border-slate-800 bg-slate-950/60 hover:border-red-500/30' 
-          : 'border-slate-200 bg-white/70 hover:border-red-500/30 shadow-[0_4px_20px_rgba(0,0,0,0.01)]'"
-      >
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs font-bold uppercase tracking-wider" :class="isDark ? 'text-slate-500' : 'text-slate-400'">{{ t('active_alerts') }}</p>
-            <h3 class="text-2xl font-black font-mono text-red-500 mt-1" :class="{ 'animate-bounce': alertCount > 0 }">{{ alertCount }}</h3>
-          </div>
-          <div 
-            class="p-3 rounded-lg group-hover:scale-110 transition duration-300"
-            :class="isDark 
-              ? 'bg-red-950/50 border border-red-500/20 text-red-500' 
-              : 'bg-red-50 border border-red-200 text-red-600'"
-          >
-            <ShieldAlert class="w-5 h-5" />
-          </div>
-        </div>
-        <div class="mt-3 flex items-center gap-1 text-[10px] font-semibold uppercase" :class="isDark ? 'text-slate-500' : 'text-slate-400'">
-          <AlertTriangle class="w-3.5 h-3.5 text-red-500 inline animate-pulse" /> {{ t('security_stable') }}
-        </div>
-        <span class="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-red-500/50 to-transparent"></span>
-      </div>
       
     </div>
+    </section>
 
     <!-- MAIN DISPLAY: 3D Twin & Inspect Panel -->
+    <section id="section-twin" class="section-anchor scroll-mt-6 rounded-2xl transition-shadow duration-300">
     <div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
       
       <!-- 3D Map (Span 3 on large screens) -->
@@ -786,12 +872,10 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+    </section>
 
-    <!-- SECTION B & E: CCTV Feed Grid & Scrolling Live Activity log -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      
-      <!-- CCTV Grid (Span 2) -->
-      <div class="lg:col-span-2 flex flex-col gap-4">
+    <!-- SECTION B: CCTV Feed -->
+    <section id="section-cctv" class="section-anchor scroll-mt-6 rounded-2xl transition-shadow duration-300 flex flex-col gap-4">
         <div class="border-b pb-3 flex justify-between items-center" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
           <div>
             <h2 
@@ -812,122 +896,65 @@ onBeforeUnmount(() => {
           </span>
         </div>
 
-        <div class="grid grid-cols-2 gap-4">
-          <!-- Fake CCTV Feed 1 -->
-          <div 
-            v-for="(camKey, idx) in ['cctv_cam_a01', 'cctv_entrance_cam', 'cctv_exit_gate', 'cctv_zone_b_cam']" 
-            :key="idx"
-            class="group relative overflow-hidden rounded-xl border h-[140px] shadow-lg cursor-pointer transition duration-300"
-            :class="isDark 
-              ? 'border-slate-800 bg-slate-950 hover:border-cyan-500/30' 
-              : 'border-slate-200 bg-white hover:border-cyan-500/40'"
-            @click="viewCCTVFeed(idx)"
-          >
-            <!-- Camera Name Tag overlay -->
-            <div 
-              class="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded border text-[9px] font-bold transition-all duration-300"
-              :class="isDark 
-                ? 'bg-slate-950/80 border-slate-850 text-slate-300' 
-                : 'bg-slate-50/90 border-slate-200 text-slate-700'"
-            >
-              <Eye class="w-3 h-3 text-cyan-500" /> {{ t(camKey) }}
-            </div>
-
-            <!-- Blink REC overlay -->
-            <div 
-              class="absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded border text-[9px] font-bold transition-all duration-300"
-              :class="isDark 
-                ? 'bg-slate-950/80 border-slate-850' 
-                : 'bg-slate-50/90 border-slate-200'"
-            >
-              <span class="relative flex h-1.5 w-1.5">
-                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
-              </span>
-              <span class="text-red-500 font-extrabold uppercase">{{ t('cctv_rec') }}</span>
-            </div>
-
-            <!-- Static noise/CCTV effect overlay -->
-            <div class="absolute inset-0 bg-cctv-scanlines z-10 pointer-events-none opacity-20 group-hover:opacity-40 transition duration-300"></div>
-
-            <!-- Dynamic Clock -->
-            <div class="absolute bottom-2 left-2 z-20 font-mono text-[8px] text-slate-500 tracking-wider">
-              2026-05-24 T{{ new Date().toTimeString().split(' ')[0] }}
-            </div>
-
-            <!-- CCTV Feed Graphic rendering -->
-            <div class="w-full h-full flex flex-col items-center justify-center relative transition-colors duration-300" :class="isDark ? 'bg-slate-950' : 'bg-slate-50/50'">
-              <!-- Holographic schematic -->
-              <div class="absolute w-20 h-20 rounded-full border border-cyan-500/5 opacity-5 flex items-center justify-center animate-spin" style="animation-duration: 40s">
-                <Compass class="w-10 h-10" />
-              </div>
-              <div 
-                class="text-[10px] font-black uppercase tracking-widest font-mono transition duration-300 z-20"
-                :class="isDark ? 'text-slate-600 group-hover:text-cyan-400' : 'text-slate-400 group-hover:text-cyan-600'"
-              >
-                {{ t('cctv_live') }} 0{{ idx + 1 }}
-              </div>
-              <!-- CCTV scanning interference lines -->
-              <span class="absolute w-full h-[1px] bg-cyan-500/10 top-0 left-0 animate-scanline"></span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Realtime Event Logger Activity Feed -->
-      <div class="flex flex-col gap-4">
-        <div class="border-b pb-3 flex items-center justify-between" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
-          <h2 
-            class="text-lg font-black tracking-wider uppercase flex items-center gap-2 transition-colors duration-300"
-            :class="isDark ? 'text-cyan-400' : 'text-cyan-600'"
-          >
-            <Activity class="w-5 h-5" /> {{ t('activity_log') }}
-          </h2>
-          <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{{ t('live_feeds') }}</span>
-        </div>
-
-        <div 
-          class="flex-1 rounded-xl border p-4 backdrop-blur-md shadow-lg flex flex-col justify-between min-h-[300px] transition-all duration-300"
+        <div
+          class="relative overflow-hidden rounded-xl border shadow-lg transition duration-300 w-full aspect-video min-h-[360px] max-h-[80vh]"
           :class="isDark 
-            ? 'border-slate-800 bg-slate-950/60' 
-            : 'border-slate-200 bg-white/70 text-slate-800 shadow-[0_4px_20px_rgba(0,0,0,0.01)]'"
+            ? 'border-slate-800 bg-black' 
+            : 'border-slate-200 bg-slate-900'"
         >
+          <!-- Camera Name Tag overlay -->
           <div 
-            ref="logsContainerRef"
-            class="flex-1 overflow-y-auto max-h-[250px] flex flex-col gap-2.5 scrollbar-thin scrollbar-track-transparent pr-1"
-            :class="isDark ? 'scrollbar-thumb-slate-800' : 'scrollbar-thumb-slate-200'"
+            class="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded border text-[9px] font-bold transition-all duration-300"
+            :class="isDark 
+              ? 'bg-slate-950/80 border-slate-850 text-slate-300' 
+              : 'bg-slate-50/90 border-slate-200 text-slate-700'"
           >
-            <div 
-              v-for="log in logs" 
-              :key="log.id"
-              class="flex items-start gap-2.5 text-[10px] pb-2 last:border-0"
-              :class="isDark ? 'border-b border-slate-900/60' : 'border-b border-slate-100'"
-            >
-              <span class="font-mono text-slate-650 text-slate-500 font-bold mt-0.5">{{ log.time }}</span>
-              
-              <!-- Color Tags based on Log Type -->
-              <span 
-                class="px-1.5 py-0.2 rounded font-black tracking-widest uppercase text-[8px] shrink-0 mt-0.5 border"
-                :class="{
-                  'bg-cyan-950/50 border-cyan-500/20 text-cyan-500': log.type === 'info',
-                  'bg-orange-950/50 border-orange-500/20 text-orange-500': log.type === 'alert',
-                  'bg-emerald-950/50 border-emerald-500/20 text-emerald-500': log.type === 'charge',
-                  'bg-red-950/50 border-red-500/20 text-red-500': log.type === 'security',
-                  'bg-indigo-950/50 border-indigo-500/20 text-indigo-500': log.type === 'system'
-                }"
-              >
-                {{ log.type }}
-              </span>
+            <Eye class="w-3 h-3 text-cyan-500" /> {{ t(liveCameraKey) }}
+          </div>
 
-              <span class="leading-relaxed transition-colors duration-300" :class="isDark ? 'text-slate-300' : 'text-slate-600'">{{ translateLogMessage(log.message) }}</span>
+          <!-- Blink REC overlay -->
+          <div 
+            class="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded border text-[9px] font-bold transition-all duration-300"
+            :class="isDark 
+              ? 'bg-slate-950/80 border-slate-850' 
+              : 'bg-slate-50/90 border-slate-200'"
+          >
+            <span class="relative flex h-1.5 w-1.5">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
+            </span>
+            <span class="text-red-500 font-extrabold uppercase">{{ t('cctv_rec') }}</span>
+          </div>
+
+          <!-- Static noise/CCTV effect overlay -->
+          <div class="absolute inset-0 bg-cctv-scanlines z-10 pointer-events-none opacity-10"></div>
+
+          <!-- Dynamic Clock -->
+          <div class="absolute bottom-3 left-3 z-20 font-mono text-[8px] text-slate-400 tracking-wider">
+            2026-05-24 T{{ new Date().toTimeString().split(' ')[0] }}
+          </div>
+
+          <!-- Live MJPEG Feed -->
+          <div class="w-full h-full relative flex items-center justify-center">
+            <img
+              v-if="liveMode"
+              :src="mjpegUrl"
+              class="w-full h-full object-contain z-0"
+              alt="Live CCTV"
+            />
+            <div
+              v-else
+              class="absolute inset-0 flex items-center justify-center text-[10px] font-black uppercase tracking-widest font-mono text-slate-500"
+            >
+              {{ t('cctv_live') }} 01
             </div>
+            <span class="absolute w-full h-[1px] bg-cyan-500/10 top-0 left-0 animate-scanline pointer-events-none"></span>
           </div>
         </div>
-      </div>
-
-    </div>
+    </section>
 
     <!-- SECTION C: Parking Analytics Charts -->
+    <section id="section-analytics" class="section-anchor scroll-mt-6 rounded-2xl transition-shadow duration-300">
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       
       <!-- Traffic line chart -->
@@ -985,6 +1012,55 @@ onBeforeUnmount(() => {
       </div>
 
     </div>
+    </section>
+
+    <!-- Nhật ký hoạt động -->
+    <section id="section-activity" class="section-anchor scroll-mt-6 rounded-2xl transition-shadow duration-300 flex flex-col gap-4">
+      <div class="border-b pb-3 flex items-center justify-between" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
+        <h2 
+          class="text-lg font-black tracking-wider uppercase flex items-center gap-2 transition-colors duration-300"
+          :class="isDark ? 'text-cyan-400' : 'text-cyan-600'"
+        >
+          <Activity class="w-5 h-5" /> {{ t('activity_log') }}
+        </h2>
+        <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{{ t('live_feeds') }}</span>
+      </div>
+
+      <div 
+        class="rounded-xl border p-4 backdrop-blur-md shadow-lg flex flex-col min-h-[300px] transition-all duration-300"
+        :class="isDark 
+          ? 'border-slate-800 bg-slate-950/60' 
+          : 'border-slate-200 bg-white/70 text-slate-800 shadow-[0_4px_20px_rgba(0,0,0,0.01)]'"
+      >
+        <div 
+          ref="logsContainerRef"
+          class="flex-1 overflow-y-auto max-h-[320px] flex flex-col gap-2.5 scrollbar-thin scrollbar-track-transparent pr-1"
+          :class="isDark ? 'scrollbar-thumb-slate-800' : 'scrollbar-thumb-slate-200'"
+        >
+          <div 
+            v-for="log in logs" 
+            :key="log.id"
+            class="flex items-start gap-2.5 text-[10px] pb-2 last:border-0"
+            :class="isDark ? 'border-b border-slate-900/60' : 'border-b border-slate-100'"
+          >
+            <span class="font-mono text-slate-500 font-bold mt-0.5">{{ log.time }}</span>
+            <span 
+              class="px-1.5 py-0.2 rounded font-black tracking-widest uppercase text-[8px] shrink-0 mt-0.5 border"
+              :class="{
+                'bg-cyan-950/50 border-cyan-500/20 text-cyan-500': log.type === 'info',
+                'bg-orange-950/50 border-orange-500/20 text-orange-500': log.type === 'alert',
+                'bg-emerald-950/50 border-emerald-500/20 text-emerald-500': log.type === 'charge',
+                'bg-red-950/50 border-red-500/20 text-red-500': log.type === 'security',
+                'bg-indigo-950/50 border-indigo-500/20 text-indigo-500': log.type === 'system'
+              }"
+            >
+              {{ log.type }}
+            </span>
+            <span class="leading-relaxed transition-colors duration-300" :class="isDark ? 'text-slate-300' : 'text-slate-600'">{{ translateLogMessage(log.message) }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 

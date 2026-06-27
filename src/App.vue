@@ -4,6 +4,9 @@ import Header from "./components/layout/Header.vue";
 import Footer from "./components/layout/Footer.vue";
 import Body from "./components/Body.vue";
 import { translations } from "./utils/translations";
+import { useParkingRealtime } from "./composables/useParkingRealtime";
+
+const { isConnected, mqttConnected } = useParkingRealtime();
 
 const isDark = ref(true);
 const toggleTheme = () => {
@@ -25,6 +28,8 @@ provide("toggleTheme", toggleTheme);
 provide("locale", locale);
 provide("toggleLocale", toggleLocale);
 provide("t", t);
+provide("isConnected", isConnected);
+provide("mqttConnected", mqttConnected);
 
 const lastAction = ref("Chưa có hành động");
 const handleRefresh = () => {

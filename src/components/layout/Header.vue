@@ -8,6 +8,8 @@ const toggleTheme = inject<any>('toggleTheme')
 const locale = inject<any>('locale')
 const toggleLocale = inject<any>('toggleLocale')
 const t = inject<any>('t')
+const isConnected = inject<any>('isConnected')
+const mqttConnected = inject<any>('mqttConnected')
 
 const clock = ref(new Date())
 let timer: number | undefined
@@ -88,16 +90,36 @@ onBeforeUnmount(() => {
       <!-- Network / Connection indicator -->
       <div 
         class="flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-300"
-        :class="isDark 
-          ? 'bg-emerald-950/30 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.05)]' 
-          : 'bg-emerald-50 border-emerald-200'"
+        :class="isConnected 
+          ? (isDark 
+            ? 'bg-emerald-950/30 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.05)]' 
+            : 'bg-emerald-50 border-emerald-200')
+          : (isDark
+            ? 'bg-red-950/30 border-red-500/20'
+            : 'bg-red-50 border-red-200')"
       >
         <span class="relative flex h-2 w-2">
-          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          <span 
+            v-if="isConnected"
+            class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"
+          ></span>
+          <span 
+            class="relative inline-flex rounded-full h-2 w-2"
+            :class="isConnected ? 'bg-emerald-500' : 'bg-red-500'"
+          ></span>
         </span>
-        <span class="text-[10px] font-black tracking-widest text-emerald-500 uppercase">
-          {{ t('online') }}
+        <span 
+          class="text-[10px] font-black tracking-widest uppercase"
+          :class="isConnected ? 'text-emerald-500' : 'text-red-500'"
+        >
+          {{ isConnected ? t('online') : (locale === 'vi' ? 'Ngoại tuyến' : 'Offline') }}
+        </span>
+        <span 
+          v-if="isConnected"
+          class="text-[9px] font-bold uppercase tracking-wider"
+          :class="mqttConnected ? 'text-cyan-500' : 'text-amber-500'"
+        >
+          {{ mqttConnected ? 'MQTT' : 'WS' }}
         </span>
       </div>
 

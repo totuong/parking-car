@@ -19,22 +19,15 @@ export const translations: Record<string, Record<string, string>> = {
     foot_engine: "ĐỘNG CƠ v1.8.4",
 
     // Navigation Sidebar
-    nav_nodes: "Các Phân Hệ Điều Hướng",
+    nav_nodes: "Điều Hướng Nhanh",
     nav_expand: "Mở rộng menu",
     nav_collapse: "Thu gọn menu",
-    nav_dashboard: "Bảng Điều Khiển",
-    nav_monitoring: "Giám Sát Live",
+    nav_overview: "Tổng Quan KPI",
+    nav_twin: "Digital Twin 3D",
+    nav_camera: "Camera CCTV",
     nav_analytics: "Phân Tích Số Liệu",
-    nav_reports: "Báo Cáo Thống Kê",
-    nav_camera: "Hệ Thống Camera",
-    nav_zones: "Các Khu Vực Đỗ",
-    nav_settings: "Cấu Hình Hệ Thống",
-    nav_guide: "Hướng Dẫn & Tài Liệu",
-    nav_history: "Lịch Sử Hoạt Động",
+    nav_activity: "Nhật Ký Hoạt Động",
     telemetry_core_up: "Hạt Nhân Telemetry: Hoạt Động",
-    nodes_offline: "Phân Hệ Giám Sát Ngoại Tuyến",
-    nodes_offline_desc: "Phân hệ giám sát cho phân khúc này đang tiến hành đồng bộ hóa dữ liệu ngoại tuyến. Các chỉ số cảm biến sẽ sớm hoạt động trở lại.",
-    return_core: "Quay lại Bảng Điều Khiển",
 
     // KPI stats
     total_slots: "Tổng Số Ô Đỗ",
@@ -81,7 +74,7 @@ export const translations: Record<string, Record<string, string>> = {
     // CCTV & Activity Logs
     cctv_title: "Hệ Thống Camera (CCTV)",
     cctv_desc: "Mạng lưới cảm biến quang học giám sát đỗ xe AI.",
-    cctv_streaming: "LUỒNG HEVC (4 KÊNH)",
+    cctv_streaming: "LUỒNG HEVC (1 KÊNH)",
     cctv_cam_a01: "Camera A01",
     cctv_entrance_cam: "Camera Cổng Vào",
     cctv_exit_gate: "Camera Cổng Ra",
@@ -92,9 +85,13 @@ export const translations: Record<string, Record<string, string>> = {
     live_feeds: "Nhận Tin Live",
 
     // Charts
-    chart_traffic: "Lưu Lượng Xe Hàng Tuần",
-    chart_distribution: "Cơ Cấu Loại Phương Tiện",
-    chart_peak: "Khung Giờ Đỗ Cao Điểm",
+    chart_traffic: "Lưu Lượng Vào/Ra Theo Phút",
+    chart_distribution: "Lấp Đầy Theo Khu Vực",
+    chart_peak: "Ô Đỗ Thay Đổi Nhiều Nhất",
+    chart_entries: "Xe vào",
+    chart_exits: "Xe ra",
+    chart_occupied: "Đang đỗ",
+    chart_changes: "Lần thay đổi",
 
     // Guide Operations
     guide_title: "Hướng Dẫn Vận Hành Hệ Thống",
@@ -167,22 +164,15 @@ export const translations: Record<string, Record<string, string>> = {
     foot_engine: "ENGINE v1.8.4",
 
     // Navigation Sidebar
-    nav_nodes: "Navigation Nodes",
+    nav_nodes: "Quick Navigation",
     nav_expand: "Expand Menu",
     nav_collapse: "Collapse Menu",
-    nav_dashboard: "Dashboard",
-    nav_monitoring: "Realtime Monitoring",
+    nav_overview: "KPI Overview",
+    nav_twin: "Digital Twin 3D",
+    nav_camera: "CCTV Camera",
     nav_analytics: "Analytics",
-    nav_reports: "Reports",
-    nav_camera: "Camera System",
-    nav_zones: "Parking Zones",
-    nav_settings: "Settings",
-    nav_guide: "Guide & Docs",
-    nav_history: "System History",
+    nav_activity: "Activity Log",
     telemetry_core_up: "Telemetry Core: Up",
-    nodes_offline: "Node Calibrations Offline",
-    nodes_offline_desc: "The telemetry interface node for this segment is currently processing offline database synchronization. Sensor metrics will resume shortly.",
-    return_core: "Return to Core Dashboard",
 
     // KPI stats
     total_slots: "Total Slots",
@@ -229,7 +219,7 @@ export const translations: Record<string, Record<string, string>> = {
     // CCTV & Activity Logs
     cctv_title: "Camera Systems (CCTV)",
     cctv_desc: "Live AI optical parking sensor matrix.",
-    cctv_streaming: "HEVC STREAMING (4CH)",
+    cctv_streaming: "HEVC STREAMING (1CH)",
     cctv_cam_a01: "Camera A01",
     cctv_entrance_cam: "Entrance Cam",
     cctv_exit_gate: "Exit Gate",
@@ -240,9 +230,13 @@ export const translations: Record<string, Record<string, string>> = {
     live_feeds: "Live Feeds",
 
     // Charts
-    chart_traffic: "Weekly Vehicle Traffic",
-    chart_distribution: "Vehicle Type Distribution",
-    chart_peak: "Peak Parking Hours",
+    chart_traffic: "Entry/Exit Traffic by Minute",
+    chart_distribution: "Occupancy by Zone",
+    chart_peak: "Top Slots by Turnover",
+    chart_entries: "Entries",
+    chart_exits: "Exits",
+    chart_occupied: "Occupied",
+    chart_changes: "State changes",
 
     // Guide Operations
     guide_title: "Platform Operations Guide",

@@ -1,0 +1,17 @@
+services:
+  parking-bridge:
+    build: ./server
+    container_name: parking-bridge
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../doker-/.env
+    environment:
+      MQTT_HOST: host.docker.internal
+      MQTT_PORT: "1883"
+      MQTT_TOPIC: parking/frames
+      FRAMES_DATASET_PATH: /data/dataset
+    volumes:
+      - ../20252B-digital-twin/data_clean:/data/dataset:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
