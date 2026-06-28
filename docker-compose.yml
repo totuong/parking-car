@@ -1,47 +1,20 @@
-# Chỉ chạy parking-bridge. Stack đầy đủ (MQTT + camera + sink + bridge): doker-/docker-compose.yml
-
+# Chỉ chạy parking-bridge. Stack đầy đủ: doker-/docker-compose.yml
 services:
-
   parking-bridge:
-
     build: ./server
-
     container_name: parking-bridge
-
     ports:
-
       - "127.0.0.1:8000:8000"
-
     env_file:
-
-      - ../doker-/.env
-
+      - ./server/.env
     environment:
-
       MQTT_HOST: host.docker.internal
-
-      MQTT_PORT: "1883"
-
-      MQTT_TOPIC: parking/frames
-
-      MQTT_USERNAME: parking_bridge
-
-      MQTT_PASSWORD: ${MQTT_PASSWORD}
-
-      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
-
       FRAMES_DATASET_PATH: /data/dataset
-
     volumes:
-
       - parking-dataset:/data/dataset:ro
-
     extra_hosts:
-
       - "host.docker.internal:host-gateway"
 
 volumes:
   parking-dataset:
     name: parking-dataset
-
-
