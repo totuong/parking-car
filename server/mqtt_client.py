@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import threading
 from typing import Callable
 
@@ -32,6 +33,10 @@ class MqttBridge:
         self.on_telemetry = on_telemetry
         self.connected = False
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        username = os.environ.get("MQTT_USERNAME", "").strip()
+        password = os.environ.get("MQTT_PASSWORD", "").strip()
+        if username:
+            self._client.username_pw_set(username, password or None)
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message

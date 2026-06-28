@@ -25,10 +25,21 @@ logger = logging.getLogger(__name__)
 SERVER_DIR = Path(__file__).resolve().parent
 DEFAULT_DATASET_PATH = SERVER_DIR.parent.parent / "20252B-digital-twin" / "data_clean"
 
+
+def _resolve_dataset_path() -> Path:
+    raw = os.environ.get("FRAMES_DATASET_PATH", "").strip()
+    if not raw:
+        return DEFAULT_DATASET_PATH.resolve()
+    path = Path(raw)
+    if not path.is_absolute():
+        path = (SERVER_DIR / path).resolve()
+    return path
+
+
 MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 MQTT_TOPIC = os.environ.get("MQTT_TOPIC", "parking/frames")
-FRAMES_DATASET_PATH = Path(os.environ.get("FRAMES_DATASET_PATH", str(DEFAULT_DATASET_PATH)))
+FRAMES_DATASET_PATH = _resolve_dataset_path()
 
 frame_state = FrameState()
 frame_resolver = FrameResolver(FRAMES_DATASET_PATH)
