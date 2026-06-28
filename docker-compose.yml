@@ -1,10 +1,33 @@
-# Chỉ chạy parking-bridge. Stack đầy đủ: doker-/docker-compose.yml
+# parking-bridge riêng — ảnh trong Docker volume, không cần 20252B-digital-twin trên máy.
+# Trước đó chạy pipeline từ doker- (KHÔNG start parking-bridge ở đó):
+#   cd doker- && docker compose up -d mqtt-broker postgres-sink camera-device
 services:
+  dataset-init:
+    image: doker--camera-device
+    container_name: parking-dataset-init
+    volumes:
+      - parking-dataset:/data/dataset
+    entrypoint:
+      - sh
+      - -c
+      - |
+        if [ ! -d /data/dataset/images ] || [ -z "$$(ls -A /data/dataset/images 2>/dev/null)" ]; then
+          echo "Seeding parking-dataset from camera image..."
+          mkdir -p /data/dataset
+          cp -a /app/data/content/dataset/. /data/dataset/
+        else
+          echo "parking-dataset already seeded."
+        fi
+    restart: "no"
+
   parking-bridge:
     build: ./server
     container_name: parking-bridge
     ports:
       - "127.0.0.1:8000:8000"
+    depends_on:
+      dataset-init:
+        condition: service_completed_successfully
     env_file:
       - ./server/.env
     environment:
