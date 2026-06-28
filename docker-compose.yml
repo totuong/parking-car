@@ -3,7 +3,7 @@
 #   cd doker- && docker compose up -d mqtt-broker postgres-sink camera-device
 services:
   dataset-init:
-    image: doker--camera-device
+    image: minh333/parking-camera-device:latest
     container_name: parking-dataset-init
     volumes:
       - parking-dataset:/data/dataset
