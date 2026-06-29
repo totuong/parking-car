@@ -131,26 +131,22 @@ const occupancyRate = computed(() => {
 // Initialize slots
 function initSlots() {
   const s: Slot[] = []
+  const noParkingSlots = new Set([
+    'A01', 'B01', 'B13', 'B14', 'C13', 'C14',
+    'D11', 'D12', 'D13', 'D14', 'E11', 'E12', 'E13', 'E14'
+  ])
   
-  // Row A: A02 -> A14 (13 slots, A01 is missing)
-  for (let c = 2; c <= 14; c++) {
-    s.push({ id: `A${c < 10 ? '0' + c : c}`, occupied: false })
-  }
-  // Row B: B02 -> B12 (11 slots, B01 is missing)
-  for (let c = 2; c <= 12; c++) {
-    s.push({ id: `B${c < 10 ? '0' + c : c}`, occupied: false })
-  }
-  // Row C: C01 -> C12 (12 slots)
-  for (let c = 1; c <= 12; c++) {
-    s.push({ id: `C${c < 10 ? '0' + c : c}`, occupied: false })
-  }
-  // Row D: D01 -> D10 (10 slots)
-  for (let c = 1; c <= 10; c++) {
-    s.push({ id: `D${c < 10 ? '0' + c : c}`, occupied: false })
-  }
-  // Row E: E01 -> E10 (10 slots)
-  for (let c = 1; c <= 10; c++) {
-    s.push({ id: `E${c < 10 ? '0' + c : c}`, occupied: false })
+  // Rows A, B, C, D, E: Columns 1 -> 14
+  const rows = ['A', 'B', 'C', 'D', 'E']
+  for (const r of rows) {
+    for (let c = 1; c <= 14; c++) {
+      const id = `${r}${c < 10 ? '0' + c : c}`
+      s.push({
+        id,
+        occupied: false,
+        noParking: noParkingSlots.has(id)
+      })
+    }
   }
   
   slots.value = s
@@ -160,7 +156,7 @@ function initSlots() {
   // Seed initial parking state (approx 45% full)
   const initialOccupancy = 25
   for (let i = 0; i < initialOccupancy; i++) {
-    const vacantList = slots.value.filter(slot => !slot.occupied)
+    const vacantList = slots.value.filter(slot => !slot.occupied && !slot.noParking)
     if (vacantList.length === 0) break
     const targetSlot = randomChoice(vacantList)
     
@@ -199,7 +195,7 @@ function addLog(type: LogEntry['type'], message: string) {
 function simulateArrival() {
   if (!simulationActive.value || liveMode.value) return
 
-  const vacantList = slots.value.filter(s => !s.occupied)
+  const vacantList = slots.value.filter(s => !s.occupied && !s.noParking)
   if (vacantList.length > 0) {
     const slot = randomChoice(vacantList)
     const color = randomChoice(carColors)
@@ -281,6 +277,11 @@ function toggleSimulation() {
 function manualToggleSlot(slotId: string) {
   const slot = slots.value.find(s => s.id === slotId)
   if (!slot) return
+
+  if (slot.noParking) {
+    addLog('security', `Security Guard: Refused vehicle override. Slot ${slot.id} is a strictly enforced No-Parking Zone.`)
+    return
+  }
 
   if (slot.occupied) {
     addLog('security', `Security Force Vacation: Manual slot override on Slot ${slot.id}.`)
@@ -765,9 +766,9 @@ onBeforeUnmount(() => {
                 <span class="text-sm font-black" :class="isDark ? 'text-cyan-400' : 'text-cyan-600'">SLOT {{ selectedSlot.id }}</span>
                 <span 
                   class="px-2 py-0.5 rounded text-[10px] font-black uppercase border transition-colors duration-300"
-                  :class="selectedSlot.occupied ? 'bg-orange-950 border-orange-500/30 text-orange-400' : 'bg-emerald-950 border-emerald-500/30 text-emerald-400'"
+                  :class="selectedSlot.occupied ? 'bg-orange-950 border-orange-500/30 text-orange-400' : (selectedSlot.noParking ? 'bg-red-950 border-red-500/30 text-red-400' : 'bg-emerald-950 border-emerald-500/30 text-emerald-400')"
                 >
-                  {{ selectedSlot.occupied ? t('occupied') : t('vacant') }}
+                  {{ selectedSlot.occupied ? t('occupied') : (selectedSlot.noParking ? (locale === 'vi' ? 'CẤM ĐỖ' : 'NO PARKING') : t('vacant')) }}
                 </span>
               </div>
 
@@ -824,6 +825,15 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
+              <!-- No Parking Status details -->
+              <div v-else-if="selectedSlot.noParking" class="flex flex-col items-center justify-center py-12 text-red-500">
+                <div class="text-4xl font-extrabold text-red-500 border-4 border-red-500 rounded-full w-16 h-16 flex items-center justify-center animate-pulse">X</div>
+                <p class="text-xs font-bold uppercase tracking-wider mt-4">{{ locale === 'vi' ? 'KHU VỰC CẤM ĐỖ' : 'NO PARKING ZONE' }}</p>
+                <p class="text-[10px] text-slate-500 text-center mt-1.5 px-4 leading-relaxed">
+                  {{ locale === 'vi' ? 'Đây là ô đỗ xe đặc biệt được dành riêng hoặc cấm đỗ. Vui lòng di chuyển sang ô khác.' : 'This slot is designated as a no-parking zone. Please select a valid slot.' }}
+                </p>
+              </div>
+
               <!-- Vacant Status details -->
               <div v-else class="flex flex-col items-center justify-center py-12 text-slate-500">
                 <Compass class="w-12 h-12 text-slate-700 animate-spin" style="animation-duration: 20s" />
@@ -836,7 +846,8 @@ onBeforeUnmount(() => {
             <div class="border-t pt-4 flex flex-col gap-2 mt-6" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
               <button 
                 @click="manualToggleSlot(selectedSlot.id)"
-                class="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold cursor-pointer select-none transition border active:scale-95 shadow-sm"
+                :disabled="selectedSlot.noParking"
+                class="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold cursor-pointer select-none transition border active:scale-95 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
                 :class="isDark 
                   ? 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300' 
                   : 'bg-slate-100 hover:bg-slate-250 border-slate-200 text-slate-750 text-slate-700'"

@@ -1,40 +1,52 @@
 import { ref, type Ref } from 'vue'
+import { Client } from '@stomp/stompjs'
 import type { Slot } from '../module/type'
-import type { FrameMessage, TelemetryBroadcast, BridgeHealth } from '../module/mqtt'
+import type { BridgeHealth } from '../module/mqtt'
 
 const isConnected = ref(false)
 const mqttConnected = ref(false)
 const currentFrameId = ref<number | null>(null)
 const liveMode = ref(true)
 
-let socket: WebSocket | null = null
-let reconnectTimer: number | undefined
-let healthTimer: number | undefined
-let reconnectAttempt = 0
+let stompClient: Client | null = null
 let slotsRef: Ref<Slot[]> | null = null
+let healthTimer: number | undefined
 
-function wsUrl(): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}/ws/telemetry`
-}
+/**
+ * Cập nhật trạng thái các slot dựa trên thông tin thời gian thực từ Spring Boot WebSocket
+ */
+export function applyRealtimeMessage(payload: any, slots: Ref<Slot[]>) {
+  if (payload) {
+    if (payload.frameId != null) {
+      currentFrameId.value = payload.frameId
+    } else if (payload.frame_id != null) {
+      currentFrameId.value = payload.frame_id
+    }
 
-export function applyRealtimeMessage(msg: FrameMessage | TelemetryBroadcast, slots: Ref<Slot[]>) {
-  currentFrameId.value = msg.frame_id
+    if (payload.slots) {
+      for (const record of payload.slots) {
+        // Tìm slot tương ứng trong state của Frontend dựa trên ID (Ví dụ: "A01", "D03")
+        const slot = slots.value.find((s) => s.id === record.id)
+        if (!slot) continue
 
-  for (const record of msg.payload) {
-    const slot = slots.value.find((s) => s.id === record.id)
-    if (!slot) continue
+        const wasOccupied = slot.occupied
+        // Convert từ occupied (1/0) của backend sang boolean (true/false) của frontend
+        slot.occupied = record.occupied === 1
+        
+        // Parse timestamp nếu có
+        if (record.timestamp) {
+          slot.timestamp = new Date(record.timestamp).getTime()
+        }
 
-    const wasOccupied = slot.occupied
-    slot.occupied = record.occupied === 1
-    slot.timestamp = record.timestamp * 1000
-
-    if (!wasOccupied && slot.occupied) {
-      slot.carType = slot.carType ?? 'Sedan'
-      slot.carColor = slot.carColor ?? 'Silver'
-    } else if (wasOccupied && !slot.occupied) {
-      delete slot.carType
-      delete slot.carColor
+        // Xử lý logic hiển thị mô hình xe 3D tương ứng
+        if (!wasOccupied && slot.occupied) {
+          slot.carType = slot.carType ?? 'Sedan'
+          slot.carColor = slot.carColor ?? 'Silver'
+        } else if (wasOccupied && !slot.occupied) {
+          delete slot.carType
+          delete slot.carColor
+        }
+      }
     }
   }
 }
@@ -49,56 +61,59 @@ async function pollHealth() {
       currentFrameId.value = health.last_frame_id
     }
   } catch {
-    mqttConnected.value = false
-  }
-}
-
-function scheduleReconnect() {
-  if (reconnectTimer) window.clearTimeout(reconnectTimer)
-  const delay = Math.min(1000 * 2 ** reconnectAttempt, 15000)
-  reconnectAttempt += 1
-  reconnectTimer = window.setTimeout(() => {
-    connectRealtime()
-  }, delay)
-}
-
-function connectRealtime() {
-  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-    return
-  }
-
-  socket = new WebSocket(wsUrl())
-
-  socket.onopen = () => {
-    isConnected.value = true
-    reconnectAttempt = 0
-  }
-
-  socket.onmessage = (event) => {
-    if (!slotsRef) return
-    try {
-      const message = JSON.parse(event.data) as TelemetryBroadcast
-      applyRealtimeMessage(message, slotsRef)
-    } catch {
-      // ignore malformed payloads
+    // If health endpoint fails but stomp is connected, keep it active
+    if (!stompClient || !stompClient.connected) {
+      mqttConnected.value = false
     }
-  }
-
-  socket.onclose = () => {
-    isConnected.value = false
-    scheduleReconnect()
-  }
-
-  socket.onerror = () => {
-    isConnected.value = false
-    socket?.close()
   }
 }
 
 export function useParkingRealtime() {
   function connect(slots: Ref<Slot[]>) {
     slotsRef = slots
-    connectRealtime()
+
+    // Nếu đã kết nối rồi thì không tạo thêm kết nối mới
+    if (stompClient && stompClient.connected) {
+      return
+    }
+
+    stompClient = new Client({
+      brokerURL: 'ws://localhost:8080/ws/websocket', // URL WebSocket của Spring Boot
+      reconnectDelay: 5000, // Tự động kết nối lại sau 5 giây nếu đứt kết nối
+      heartbeatIncoming: 4000,
+      heartbeatOutgoing: 4000,
+      
+      onConnect: () => {
+        isConnected.value = true
+        mqttConnected.value = true
+        console.log('Đã kết nối thành công đến Spring Boot STOMP Broker')
+        
+        // Đăng ký kênh nhận thông tin bãi đỗ xe thay đổi
+        stompClient?.subscribe('/parking/dashboard', (message) => {
+          try {
+            const data = JSON.parse(message.body)
+            if (slotsRef) {
+              applyRealtimeMessage(data, slotsRef)
+            }
+          } catch (e) {
+            console.error('Lỗi phân tích dữ liệu từ WebSocket:', e)
+          }
+        })
+      },
+      
+      onDisconnect: () => {
+        isConnected.value = false
+        mqttConnected.value = false
+        console.log('Đã ngắt kết nối với WebSocket Broker')
+      },
+      
+      onStompError: (frame) => {
+        console.error('Lỗi từ STOMP Broker:', frame.headers['message'])
+        console.error('Chi tiết lỗi:', frame.body)
+      }
+    })
+
+    stompClient.activate()
 
     if (healthTimer) window.clearInterval(healthTimer)
     pollHealth()
@@ -106,12 +121,14 @@ export function useParkingRealtime() {
   }
 
   function disconnect() {
-    if (reconnectTimer) window.clearTimeout(reconnectTimer)
-    if (healthTimer) window.clearInterval(healthTimer)
-    reconnectTimer = undefined
-    healthTimer = undefined
-    socket?.close()
-    socket = null
+    if (stompClient) {
+      stompClient.deactivate()
+      stompClient = null
+    }
+    if (healthTimer) {
+      window.clearInterval(healthTimer)
+      healthTimer = undefined
+    }
     isConnected.value = false
     mqttConnected.value = false
     slotsRef = null
