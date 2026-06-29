@@ -4,6 +4,7 @@ export type Slot = {
   carType?: string
   carColor?: string
   timestamp?: number
+  noParking?: boolean
 }
 
 export type LogEntry = {

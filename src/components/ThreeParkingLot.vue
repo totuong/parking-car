@@ -11,6 +11,7 @@ type Slot = {
   carType?: string
   carColor?: string
   timestamp?: number
+  noParking?: boolean
 }
 
 const props = defineProps<{
@@ -110,8 +111,10 @@ function getSlotCoords(slotId: string): { x: number; y: number; z: number; rotY:
   const row = slotId.charAt(0)
   const col = parseInt(slotId.substring(1), 10)
   
-  // Columns 1..14 map to X centered symmetrically around 0
-  const x = (col - 7.5) * 3.2
+  // Columns 1..14 map to X centered symmetrically around 0 (or 0..13 for rows A and B)
+  const isZeroIndexed = row === 'A' || row === 'B'
+  const centerCol = isZeroIndexed ? 6.5 : 7.5
+  const x = (col - centerCol) * 3.2
   const y = 0.05
   let z = 0
   let rotY = 0
@@ -1267,27 +1270,65 @@ function buildParkingSlots() {
     const plane = new THREE.Mesh(planeGeo, emptyMat)
     plane.rotation.x = -Math.PI / 2
     plane.position.set(coords.x, coords.y + 0.005, coords.z)
-    plane.visible = !slot.occupied // Only glow if empty
+    plane.visible = !slot.occupied && !slot.noParking // Only glow if empty and not noParking
     slotsGroup.add(plane)
     slotIndicatorPlanes.set(slot.id, plane)
 
-    // Add small glowing circular IoT sensor disk in the center of the slot
-    const sensorGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.02, 16)
-    const sensorMat = new THREE.MeshBasicMaterial({
-      color: 0x10b981, // Glowing emerald green
-      transparent: true,
-      opacity: 0.8
-    })
-    const sensor = new THREE.Mesh(sensorGeo, sensorMat)
-    sensor.position.set(coords.x, coords.y + 0.01, coords.z)
-    sensor.visible = !slot.occupied
-    slotsGroup.add(sensor)
-    slotSensorMeshes.set(slot.id, sensor)
+    // Add small glowing circular IoT sensor disk in the center of the slot (only if parking is allowed)
+    if (!slot.noParking) {
+      const sensorGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.02, 16)
+      const sensorMat = new THREE.MeshBasicMaterial({
+        color: 0x10b981, // Glowing emerald green
+        transparent: true,
+        opacity: 0.8
+      })
+      const sensor = new THREE.Mesh(sensorGeo, sensorMat)
+      sensor.position.set(coords.x, coords.y + 0.01, coords.z)
+      sensor.visible = !slot.occupied
+      slotsGroup.add(sensor)
+      slotSensorMeshes.set(slot.id, sensor)
+    }
+
+    // Red X indicator for no-parking zones
+    if (slot.noParking) {
+      const xGroup = new THREE.Group()
+      
+      const barW = 0.22
+      const barL = 3.2
+      const barH = 0.02
+      const barGeo = new THREE.BoxGeometry(barW, barH, barL)
+      const xMat = new THREE.MeshBasicMaterial({
+        color: 0xff3b30, // Vibrant glowing red
+        transparent: true,
+        opacity: 0.85
+      })
+      
+      const bar1 = new THREE.Mesh(barGeo, xMat)
+      bar1.rotation.y = Math.PI / 4 // 45 deg
+      
+      const bar2 = new THREE.Mesh(barGeo, xMat)
+      bar2.rotation.y = -Math.PI / 4 // -45 deg
+      
+      xGroup.add(bar1)
+      xGroup.add(bar2)
+      xGroup.position.set(coords.x, coords.y + 0.012, coords.z)
+      slotsGroup.add(xGroup)
+    }
 
     // Wireframe Box edges to show glowing boundaries
     const boxGeo = new THREE.BoxGeometry(slotW - 0.1, 0.15, slotL - 0.1)
     const edges = new THREE.EdgesGeometry(boxGeo)
-    const line = new THREE.LineSegments(edges, slot.occupied ? occupiedLineMat : emptyLineMat)
+    
+    let lineMat = slot.occupied ? occupiedLineMat : emptyLineMat
+    if (slot.noParking) {
+      lineMat = new THREE.LineBasicMaterial({
+        color: 0xff3b30, // Glow red for noParking boundaries
+        transparent: true,
+        opacity: 0.75
+      })
+    }
+    
+    const line = new THREE.LineSegments(edges, lineMat)
     line.position.set(coords.x, coords.y + 0.07, coords.z)
     slotsGroup.add(line)
 
@@ -1925,9 +1966,9 @@ function setEntranceView() {
         <span class="font-extrabold text-cyan-500 text-sm tracking-wide">SLOT {{ tooltipData.id }}</span>
         <span 
           class="px-2 py-0.5 rounded text-[10px] font-extrabold tracking-wider uppercase border"
-          :class="tooltipData.occupied ? 'bg-orange-950 text-orange-400 border-orange-500/20' : 'bg-emerald-950 text-emerald-400 border-emerald-500/20'"
+          :class="tooltipData.occupied ? 'bg-orange-950 text-orange-400 border-orange-500/20' : (tooltipData.noParking ? 'bg-red-950 text-red-400 border-red-500/20' : 'bg-emerald-950 text-emerald-400 border-emerald-500/20')"
         >
-          {{ tooltipData.occupied ? t('occupied') : t('vacant') }}
+          {{ tooltipData.occupied ? t('occupied') : (tooltipData.noParking ? (locale === 'vi' ? 'Cấm Đỗ' : 'No Parking') : t('vacant')) }}
         </span>
       </div>
       
@@ -1935,6 +1976,9 @@ function setEntranceView() {
         <div class="flex justify-between gap-4 mt-1"><span class="text-slate-500">{{ t('vehicle_telemetry') === 'Thông Số Phương Tiện' ? 'Loại xe:' : 'Vehicle Type:' }}</span><span class="font-bold uppercase" :class="isDark ? 'text-white' : 'text-slate-700'">{{ tooltipData.carType }}</span></div>
         <div class="flex justify-between gap-4"><span class="text-slate-500">{{ t('vehicle_telemetry') === 'Thông Số Phương Tiện' ? 'Màu xe:' : 'Body Color:' }}</span><span class="font-bold uppercase" :style="{ color: tooltipData.carColor?.toLowerCase() }">{{ tooltipData.carColor }}</span></div>
         <div v-if="tooltipData.timestamp" class="flex justify-between gap-4 border-t mt-1 pt-1.5" :class="isDark ? 'border-slate-900' : 'border-slate-100'"><span class="text-slate-500">{{ t('parked_at') }}:</span><span class="font-mono text-cyan-600">{{ new Date(tooltipData.timestamp).toLocaleTimeString() }}</span></div>
+      </template>
+      <template v-else-if="tooltipData.noParking">
+        <div class="text-red-500 mt-1 italic flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> {{ locale === 'vi' ? 'Khu vực cấm đỗ xe' : 'Strictly no parking zone' }}</div>
       </template>
       <template v-else>
         <div class="text-slate-500 mt-1 italic flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> {{ t('space_empty_desc') }}</div>

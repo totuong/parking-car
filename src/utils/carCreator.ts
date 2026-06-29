@@ -2,13 +2,13 @@ import * as THREE from 'three'
 
 // Highly vibrant glossy metallic colors map
 const colorMapHex: Record<string, number> = {
-  black: 0x1f232b, // sleek carbon black
+  black: 0x1e293b, // sleek charcoal metallic
   white: 0xffffff, // pure brilliant white
-  silver: 0xe2e8f0, // bright metallic chrome silver
-  blue: 0x00d2ff, // vivid glossy cyan blue
-  red: 0xff1e1e, // hot racing red
-  yellow: 0xffea00, // sunburst yellow
-  green: 0x00ff66 // neon emerald green
+  silver: 0xf1f5f9, // bright metallic chrome silver
+  blue: 0x0ea5e9, // vivid glossy cyan/blue
+  red: 0xf43f5e, // vibrant candy rose red
+  yellow: 0xfacc15, // sunburst yellow
+  green: 0x4ade80 // neon mint green
 }
 
 /**
@@ -27,17 +27,20 @@ export function createProceduralCar(colorName: string, carType = 'Sedan', isNigh
   const bodyMat = new THREE.MeshPhysicalMaterial({
     color: bodyColor,
     metalness: 0.9,
-    roughness: 0.08,
+    roughness: 0.05,
     clearcoat: 1.0,
-    clearcoatRoughness: 0.03,
-    reflectivity: 0.95
+    clearcoatRoughness: 0.02,
+    reflectivity: 0.98
   })
 
-  const glassMat = new THREE.MeshStandardMaterial({
+  const glassMat = new THREE.MeshPhysicalMaterial({
     color: 0x0f172a,
     transparent: true,
-    opacity: 0.75,
-    roughness: 0.05
+    opacity: 0.6,
+    roughness: 0.05,
+    metalness: 0.1,
+    transmission: 0.6,
+    ior: 1.5
   })
 
   const wheelMat = new THREE.MeshStandardMaterial({
@@ -188,6 +191,40 @@ export function createProceduralCar(colorName: string, carType = 'Sedan', isNigh
     group.add(wingBlade)
   }
 
+  // Bumpers & Grille for Sedan/EV/SUV (excluding Truck which has its own look)
+  if (type !== 'truck') {
+    const bumperMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      metalness: 0.8,
+      roughness: 0.2
+    })
+    
+    // Front Bumper
+    const bumperFrontGeo = new THREE.BoxGeometry(chassisW - 0.05, 0.12, 0.15)
+    const bumperFront = new THREE.Mesh(bumperFrontGeo, bumperMat)
+    bumperFront.position.set(0, 0.08, chassisL / 2 + 0.02)
+    group.add(bumperFront)
+
+    // Rear Bumper
+    const bumperRearGeo = new THREE.BoxGeometry(chassisW - 0.05, 0.12, 0.15)
+    const bumperRear = new THREE.Mesh(bumperRearGeo, bumperMat)
+    bumperRear.position.set(0, 0.08, -chassisL / 2 - 0.02)
+    group.add(bumperRear)
+
+    // Front Grille (specifically on Sedan for premium detail!)
+    if (type === 'sedan') {
+      const grilleGeo = new THREE.BoxGeometry(chassisW * 0.5, 0.15, 0.02)
+      const grilleMat = new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        metalness: 0.9,
+        roughness: 0.1
+      })
+      const grille = new THREE.Mesh(grilleGeo, grilleMat)
+      grille.position.set(0, 0.26, chassisL / 2 + 0.01)
+      group.add(grille)
+    }
+  }
+
   // 3. Wheels with Shiny Steel Alloy Rims
   const wheelRadius = 0.32
   const wheelThickness = 0.22
@@ -216,6 +253,15 @@ export function createProceduralCar(colorName: string, carType = 'Sedan', isNigh
     const rim = new THREE.Mesh(rimGeo, rimMat)
     rim.position.set(pos.x, wheelRadius, pos.z)
     group.add(rim)
+
+    // Detailed Alloy Wheel Spokes (3 crossed bars creating 6 spokes)
+    const spokeGeo = new THREE.BoxGeometry(wheelThickness + 0.02, wheelRadius * 1.0, 0.03)
+    for (let r = 0; r < 3; r++) {
+      const spoke = new THREE.Mesh(spokeGeo, rimMat)
+      spoke.position.set(pos.x, wheelRadius, pos.z)
+      spoke.rotation.x = (r * Math.PI) / 3
+      group.add(spoke)
+    }
   }
 
   // 4. Lights
