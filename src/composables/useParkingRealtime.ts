@@ -1,6 +1,7 @@
 import { ref, type Ref } from 'vue'
 import type { Slot } from '../module/type'
 import type { FrameMessage, TelemetryBroadcast, BridgeHealth } from '../module/mqtt'
+import { withApiToken } from '../utils/api'
 
 const isConnected = ref(false)
 const mqttConnected = ref(false)
@@ -15,7 +16,8 @@ let slotsRef: Ref<Slot[]> | null = null
 
 function wsUrl(): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}/ws/telemetry`
+  const base = `${protocol}//${window.location.host}/ws/telemetry`
+  return withApiToken(base)
 }
 
 export function applyRealtimeMessage(msg: FrameMessage | TelemetryBroadcast, slots: Ref<Slot[]>) {

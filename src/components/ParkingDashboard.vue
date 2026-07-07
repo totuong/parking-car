@@ -9,6 +9,7 @@ import Chart from 'chart.js/auto'
 import ThreeParkingLot from './ThreeParkingLot.vue'
 import { useParkingRealtime } from '../composables/useParkingRealtime'
 import { fetchParkingAnalytics, type ParkingAnalytics } from '../module/analytics'
+import { withApiToken } from '../utils/api'
 
 const isDark = inject<any>('isDark')
 const locale = inject<any>('locale')
@@ -76,7 +77,7 @@ const activeCameras = ref(1)
 const simulationActive = ref(false)
 
 const { connect, disconnect, liveMode } = useParkingRealtime()
-const mjpegUrl = '/api/stream/mjpeg'
+const mjpegUrl = withApiToken('/api/stream/mjpeg')
 
 // Selected Slot for Telemetry details
 const selectedSlot = ref<Slot | null>(null)

@@ -25,8 +25,10 @@ export type ParkingAnalytics = {
   }
 }
 
+import { apiFetch } from '../utils/api'
+
 export async function fetchParkingAnalytics(): Promise<ParkingAnalytics> {
-  const response = await fetch('/api/analytics/summary')
+  const response = await apiFetch('/api/analytics/summary')
   if (!response.ok) {
     return { available: false, error: `HTTP ${response.status}` }
   }

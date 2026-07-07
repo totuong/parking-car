@@ -5,11 +5,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from analytics import fetch_analytics_summary
+from auth import is_auth_enabled, require_api_key, verify_ws_token
 from frame_resolver import FrameResolver
 from frame_state import FrameState
 from mjpeg_stream import create_mjpeg_response
@@ -41,6 +42,18 @@ MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 MQTT_TOPIC = os.environ.get("MQTT_TOPIC", "parking/frames")
 FRAMES_DATASET_PATH = _resolve_dataset_path()
 
+DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+
+def _parse_cors_origins() -> list[str]:
+    raw = os.environ.get("CORS_ORIGINS", "").strip()
+    if not raw:
+        return DEFAULT_CORS_ORIGINS
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+CORS_ORIGINS = _parse_cors_origins()
+
 frame_state = FrameState()
 frame_resolver = FrameResolver(FRAMES_DATASET_PATH)
 ws_manager = WebSocketManager()
@@ -66,6 +79,17 @@ async def lifespan(app: FastAPI):
         on_telemetry=broadcast_telemetry,
     )
     mqtt_bridge.start(loop)
+    mqtt_auth_mode = "required" if mqtt_bridge.auth_required else "optional"
+    logger.info(
+        "MQTT auth %s; configured=%s; username=%s",
+        mqtt_auth_mode,
+        mqtt_bridge.auth_configured,
+        mqtt_bridge.username or "anonymous",
+    )
+    if is_auth_enabled():
+        logger.info("API auth enabled; CORS origins=%s", CORS_ORIGINS)
+    else:
+        logger.warning("API auth disabled (API_SECRET not set)")
     logger.info("Parking bridge started")
     yield
     if mqtt_bridge:
@@ -75,7 +99,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Parking Car Bridge", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -87,6 +111,9 @@ async def health():
     snapshot = frame_state.snapshot()
     return {
         "mqtt_connected": bool(mqtt_bridge and mqtt_bridge.connected),
+        "mqtt_auth_required": bool(mqtt_bridge and mqtt_bridge.auth_required),
+        "mqtt_auth_configured": bool(mqtt_bridge and mqtt_bridge.auth_configured),
+        "mqtt_username": mqtt_bridge.username if mqtt_bridge and mqtt_bridge.username else None,
         "last_frame_id": snapshot.frame_id,
         "last_source_frame_id": snapshot.source_frame_id,
         "clients": ws_manager.client_count,
@@ -95,12 +122,12 @@ async def health():
 
 
 @app.get("/api/analytics/summary")
-async def analytics_summary():
+async def analytics_summary(_: None = Depends(require_api_key)):
     return fetch_analytics_summary()
 
 
 @app.get("/api/telemetry/latest")
-async def telemetry_latest():
+async def telemetry_latest(_: None = Depends(require_api_key)):
     snapshot = frame_state.snapshot()
     return {
         "frame_id": snapshot.frame_id,
@@ -112,7 +139,7 @@ async def telemetry_latest():
 
 
 @app.get("/api/frames/{source_frame_id}.jpg")
-async def get_frame(source_frame_id: str):
+async def get_frame(source_frame_id: str, _: None = Depends(require_api_key)):
     path = frame_resolver.get_indexed_path(source_frame_id)
     if not path or not path.is_file():
         snapshot = frame_state.snapshot()
@@ -124,12 +151,16 @@ async def get_frame(source_frame_id: str):
 
 
 @app.get("/api/stream/mjpeg")
-async def stream_mjpeg():
+async def stream_mjpeg(_: None = Depends(require_api_key)):
     return create_mjpeg_response(frame_state)
 
 
 @app.websocket("/ws/telemetry")
 async def websocket_telemetry(websocket: WebSocket):
+    if not verify_ws_token(websocket):
+        await websocket.close(code=4401, reason="Unauthorized")
+        return
+
     await ws_manager.connect(websocket)
     snapshot = frame_state.snapshot()
     if snapshot.frame_id is not None:

@@ -31,6 +31,7 @@ services:
     env_file:
       - ./server/.env
     environment:
+      # MQTT username/password lấy từ ./server/.env để khớp ACL broker.
       MQTT_HOST: host.docker.internal
       FRAMES_DATASET_PATH: /data/dataset
     volumes:
