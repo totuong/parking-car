@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, inject } from 'vue'
-import { Activity, Bell, Shield, Cpu, Sun, Moon } from 'lucide-vue-next'
+import { Activity, Bell, Shield, Cpu, Sun, Moon, LogOut } from 'lucide-vue-next'
 import { Icon } from '@iconify/vue';
 
 const isDark = inject<any>('isDark')
@@ -10,6 +10,7 @@ const toggleLocale = inject<any>('toggleLocale')
 const t = inject<any>('t')
 const isConnected = inject<any>('isConnected')
 const mqttConnected = inject<any>('mqttConnected')
+const logout = inject<any>('logout')
 
 const clock = ref(new Date())
 let timer: number | undefined
@@ -197,6 +198,21 @@ onBeforeUnmount(() => {
           </span>
         </div>
       </div>
+
+      <!-- Divider -->
+      <div class="h-8 w-px transition-colors duration-300" :class="isDark ? 'bg-slate-800' : 'bg-slate-200'"></div>
+
+      <!-- Logout Button -->
+      <button 
+        @click="logout"
+        class="p-2 rounded-xl border transition-all duration-300 cursor-pointer select-none outline-none group active:scale-95 shadow-sm"
+        :class="isDark 
+          ? 'bg-red-950/20 border-red-900/30 hover:border-red-500/50 hover:bg-red-900/30 text-red-400 hover:text-red-300 shadow-[0_0_10px_rgba(239,68,68,0.05)]' 
+          : 'bg-white border-slate-200 hover:border-red-500/40 hover:bg-red-50 text-red-500 hover:text-red-600'"
+        :title="locale === 'vi' ? 'Đăng xuất' : 'Log Out'"
+      >
+        <LogOut class="w-4.5 h-4.5" />
+      </button>
     </div>
   </header>
 </template>

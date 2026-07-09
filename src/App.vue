@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref, provide } from "vue";
+import { ref, provide, onMounted } from "vue";
 import Header from "./components/layout/Header.vue";
 import Footer from "./components/layout/Footer.vue";
 import Body from "./components/Body.vue";
+import Login from "./components/Login.vue";
 import { translations } from "./utils/translations";
 import { useParkingRealtime } from "./composables/useParkingRealtime";
+import { getCookie, deleteCookie } from "./utils/cookie";
 
-const { isConnected, mqttConnected } = useParkingRealtime();
+const { isConnected, mqttConnected, disconnect } = useParkingRealtime();
 
 const isDark = ref(true);
 const toggleTheme = () => {
@@ -22,6 +24,22 @@ const t = (key: string): string => {
   return translations[locale.value]?.[key] ?? translations["vi"]?.[key] ?? key;
 };
 
+const authToken = ref<string | null>(null);
+
+onMounted(() => {
+  authToken.value = getCookie('token');
+});
+
+const handleLoginSuccess = (token: string) => {
+  authToken.value = token;
+};
+
+const handleLogout = () => {
+  deleteCookie('token');
+  authToken.value = null;
+  disconnect();
+};
+
 // Cung cấp các biến theme và ngôn ngữ cho toàn bộ các component con
 provide("isDark", isDark);
 provide("toggleTheme", toggleTheme);
@@ -30,6 +48,8 @@ provide("toggleLocale", toggleLocale);
 provide("t", t);
 provide("isConnected", isConnected);
 provide("mqttConnected", mqttConnected);
+provide("authToken", authToken);
+provide("logout", handleLogout);
 
 const lastAction = ref("Chưa có hành động");
 const handleRefresh = () => {
@@ -43,21 +63,14 @@ const handleRefresh = () => {
     class="min-h-screen flex flex-col font-sans select-none overflow-hidden transition-colors duration-300"
     :class="isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'"
   >
-    <Header>
-      <!-- <template #actions>
-        <button
-          @click="handleRefresh"
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer select-none transition shadow-md active:scale-95"
-          :class="isDark 
-            ? 'bg-cyan-950/40 hover:bg-cyan-900/40 border border-cyan-500/30 hover:border-cyan-400 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.1)]' 
-            : 'bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-600 shadow-[0_2px_8px_rgba(6,182,212,0.08)]'"
-        >
-          <i class="pi pi-refresh text-[10px] animate-spin" style="animation-duration: 4s"></i> {{ t('telemetry_reset') }}
-        </button>
-      </template> -->
-    </Header>
-    <Body />
-    <Footer />
+    <div v-if="!authToken" class="flex-1 flex items-center justify-center bg-slate-950">
+      <Login @login-success="handleLoginSuccess" />
+    </div>
+    <template v-else>
+      <Header />
+      <Body />
+      <Footer />
+    </template>
   </div>
 </template>
 

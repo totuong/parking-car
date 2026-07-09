@@ -2,6 +2,7 @@ import { ref, type Ref } from 'vue'
 import type { Slot } from '../module/type'
 import type { FrameMessage, TelemetryBroadcast, BridgeHealth } from '../module/mqtt'
 import { withApiToken } from '../utils/api'
+import { getCookie } from '../utils/cookie'
 
 const isConnected = ref(false)
 const mqttConnected = ref(false)
@@ -19,6 +20,7 @@ const carColors = ['Black', 'White', 'Silver', 'Blue', 'Red', 'Yellow', 'Green']
 
 function randomChoice<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!
+}
 function wsUrl(): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const base = `${protocol}//${window.location.host}/ws/telemetry`
@@ -124,13 +126,18 @@ export function useParkingRealtime() {
         }
       }
 
-      console.log('Đang kết nối đến native WebSocket: ws://localhost:8080/ws/parking')
-      socket = new WebSocket('ws://localhost:8080/ws/parking')
+      const token = getCookie('token')
+      const wsUrl = token 
+        ? `ws://localhost:8080/ws/parking?token=${encodeURIComponent(token)}`
+        : 'ws://localhost:8080/ws/parking'
+
+      console.log(`Đang kết nối đến native WebSocket: ${wsUrl}`)
+      socket = new WebSocket(wsUrl)
 
       socket.onopen = () => {
         isConnected.value = true
         mqttConnected.value = true
-        console.log('Đã kết nối thành công đến native WebSocket: ws://localhost:8080/ws/parking')
+        console.log(`Đã kết nối thành công đến native WebSocket: ${wsUrl}`)
       }
 
       socket.onmessage = (event) => {
