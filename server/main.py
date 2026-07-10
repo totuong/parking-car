@@ -1,21 +1,22 @@
 import asyncio
+import base64
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from analytics import fetch_analytics_summary
 from auth import is_auth_enabled, require_api_key, verify_ws_token
-from frame_resolver import FrameResolver
+from frame_resolver import FrameResolver, IndexedFrame
 from frame_state import FrameState
 from mjpeg_stream import create_mjpeg_response
-from models import TelemetryBroadcast
-from mqtt_client import MqttBridge
+from models import FrameMessage, TelemetryBroadcast
 from websocket_manager import WebSocketManager
 
 load_dotenv()
@@ -37,10 +38,15 @@ def _resolve_dataset_path() -> Path:
     return path
 
 
-MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")
-MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
-MQTT_TOPIC = os.environ.get("MQTT_TOPIC", "parking/frames")
 FRAMES_DATASET_PATH = _resolve_dataset_path()
+INGEST_STALE_SECONDS = int(os.environ.get("INGEST_STALE_SECONDS", "5"))
+FRAME_POLL_INTERVAL_SECONDS = float(os.environ.get("FRAME_POLL_INTERVAL_SECONDS", "1"))
+FRAME_LOOP_DATASET = os.environ.get("FRAME_LOOP_DATASET", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
@@ -57,43 +63,156 @@ CORS_ORIGINS = _parse_cors_origins()
 frame_state = FrameState()
 frame_resolver = FrameResolver(FRAMES_DATASET_PATH)
 ws_manager = WebSocketManager()
-mqtt_bridge: MqttBridge | None = None
+poller_task: asyncio.Task | None = None
+poller_enabled = frame_resolver.indexed_frames > 0
+poller_running = False
 
 
 async def broadcast_telemetry(telemetry: TelemetryBroadcast):
     await ws_manager.broadcast(telemetry)
 
 
+def _is_recent(snapshot_received_at: datetime | None) -> bool:
+    if not snapshot_received_at:
+        return False
+    age_seconds = (datetime.now(timezone.utc) - snapshot_received_at).total_seconds()
+    return age_seconds <= INGEST_STALE_SECONDS
+
+
+def _decode_image_bytes(image_value: str, frame_message: FrameMessage) -> bytes | None:
+    raw = (image_value or "").strip()
+    if not raw:
+        return None
+
+    # Upload API may send a local path instead of base64 during migration.
+    file_candidate = Path(raw)
+    if file_candidate.is_file():
+        return file_candidate.read_bytes()
+
+    if raw.startswith("data:"):
+        _, _, raw = raw.partition(",")
+
+    try:
+        return base64.b64decode(raw, validate=True)
+    except Exception:
+        # Allow URL-safe/newline-padded base64 inputs from edge devices.
+        normalized = raw.replace("\n", "").replace("\r", "").replace(" ", "")
+        padding = (-len(normalized)) % 4
+        if padding:
+            normalized += "=" * padding
+        try:
+            return base64.b64decode(normalized)
+        except Exception:
+            return frame_resolver.read_bytes(frame_message)
+
+
+async def process_polled_frame(frame: IndexedFrame):
+    if not frame.path.is_file():
+        logger.warning(
+            "Polled frame missing on disk: frame_id=%s source_frame_id=%s path=%s",
+            frame.frame_id,
+            frame.source_frame_id,
+            frame.path,
+        )
+        return
+
+    image_bytes = frame.path.read_bytes()
+    frame_state.update(
+        frame_id=frame.frame_id,
+        source_frame_id=frame.source_frame_id,
+        split=frame.split,
+        image_bytes=image_bytes,
+        payload=[],
+    )
+
+    telemetry = TelemetryBroadcast(
+        frame_id=frame.frame_id,
+        source_frame_id=frame.source_frame_id,
+        split=frame.split,
+        payload=[],
+    )
+    await broadcast_telemetry(telemetry)
+
+
+async def process_frame_message(frame_message: FrameMessage):
+    image_bytes = _decode_image_bytes(frame_message.image, frame_message)
+    if not image_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing or invalid image payload",
+        )
+
+    frame_state.update(
+        frame_id=frame_message.frame_id,
+        source_frame_id=frame_message.source_frame_id,
+        split=frame_message.split,
+        image_bytes=image_bytes,
+        payload=frame_message.payload,
+    )
+
+    telemetry = TelemetryBroadcast(
+        frame_id=frame_message.frame_id,
+        source_frame_id=frame_message.source_frame_id,
+        split=frame_message.split,
+        payload=frame_message.payload,
+    )
+    await broadcast_telemetry(telemetry)
+
+
+async def poll_dataset_frames():
+    global poller_running
+
+    ordered_frames = frame_resolver.ordered_frames()
+    if not ordered_frames:
+        logger.warning("Polling disabled: no indexed frames found in %s", FRAMES_DATASET_PATH)
+        return
+
+    poller_running = True
+    logger.info(
+        "Dataset polling started: frames=%s interval=%ss loop=%s path=%s",
+        len(ordered_frames),
+        FRAME_POLL_INTERVAL_SECONDS,
+        FRAME_LOOP_DATASET,
+        FRAMES_DATASET_PATH,
+    )
+    try:
+        while True:
+            for frame in ordered_frames:
+                await process_polled_frame(frame)
+                await asyncio.sleep(FRAME_POLL_INTERVAL_SECONDS)
+            if not FRAME_LOOP_DATASET:
+                logger.info("Dataset polling finished after one pass through indexed frames")
+                return
+    except asyncio.CancelledError:
+        logger.info("Dataset polling stopped")
+        raise
+    finally:
+        poller_running = False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global mqtt_bridge
+    global poller_task
     loop = asyncio.get_running_loop()
     frame_state.bind_loop(loop)
 
-    mqtt_bridge = MqttBridge(
-        host=MQTT_HOST,
-        port=MQTT_PORT,
-        topic=MQTT_TOPIC,
-        frame_resolver=frame_resolver,
-        frame_state=frame_state,
-        on_telemetry=broadcast_telemetry,
-    )
-    mqtt_bridge.start(loop)
-    mqtt_auth_mode = "required" if mqtt_bridge.auth_required else "optional"
-    logger.info(
-        "MQTT auth %s; configured=%s; username=%s",
-        mqtt_auth_mode,
-        mqtt_bridge.auth_configured,
-        mqtt_bridge.username or "anonymous",
-    )
     if is_auth_enabled():
         logger.info("API auth enabled; CORS origins=%s", CORS_ORIGINS)
     else:
         logger.warning("API auth disabled (API_SECRET not set)")
-    logger.info("Parking bridge started")
+    if poller_enabled:
+        poller_task = asyncio.create_task(poll_dataset_frames(), name="dataset-frame-poller")
+    else:
+        logger.warning("Parking bridge started without polling source; no indexed frames available")
+    logger.info("Parking bridge started in polling mode")
     yield
-    if mqtt_bridge:
-        mqtt_bridge.stop()
+    if poller_task:
+        poller_task.cancel()
+        try:
+            await poller_task
+        except asyncio.CancelledError:
+            pass
+        poller_task = None
 
 
 app = FastAPI(title="Parking Car Bridge", lifespan=lifespan)
@@ -110,10 +229,16 @@ app.add_middleware(
 async def health():
     snapshot = frame_state.snapshot()
     return {
-        "mqtt_connected": bool(mqtt_bridge and mqtt_bridge.connected),
-        "mqtt_auth_required": bool(mqtt_bridge and mqtt_bridge.auth_required),
-        "mqtt_auth_configured": bool(mqtt_bridge and mqtt_bridge.auth_configured),
-        "mqtt_username": mqtt_bridge.username if mqtt_bridge and mqtt_bridge.username else None,
+        "mqtt_connected": _is_recent(snapshot.received_at),
+        "mqtt_auth_required": False,
+        "mqtt_auth_configured": False,
+        "mqtt_username": None,
+        "ingest_mode": "polling",
+        "ingest_connected": _is_recent(snapshot.received_at),
+        "poller_enabled": poller_enabled,
+        "poller_running": poller_running,
+        "frame_poll_interval_seconds": FRAME_POLL_INTERVAL_SECONDS,
+        "frame_loop_dataset": FRAME_LOOP_DATASET,
         "last_frame_id": snapshot.frame_id,
         "last_source_frame_id": snapshot.source_frame_id,
         "clients": ws_manager.client_count,
@@ -136,6 +261,15 @@ async def telemetry_latest(_: None = Depends(require_api_key)):
         "payload": [item.model_dump() for item in snapshot.payload],
         "received_at": snapshot.received_at.isoformat() if snapshot.received_at else None,
     }
+
+
+@app.post("/api/telemetry/frame")
+async def ingest_frame(
+    frame_message: FrameMessage,
+    _: None = Depends(require_api_key),
+):
+    await process_frame_message(frame_message)
+    return {"ok": True, "frame_id": frame_message.frame_id}
 
 
 @app.get("/api/frames/{source_frame_id}.jpg")

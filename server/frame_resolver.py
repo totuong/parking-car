@@ -1,5 +1,6 @@
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from models import FrameMessage
@@ -12,6 +13,14 @@ KEEP_PATTERN = re.compile(
     r"4k-time-lapse-car-parking-lot-stock-video-download-video-clip-now-istock_TyROSAGZ_mp4-(\d+)",
     re.IGNORECASE,
 )
+
+
+@dataclass(frozen=True)
+class IndexedFrame:
+    frame_id: int
+    source_frame_id: str
+    split: str
+    path: Path
 
 
 class FrameResolver:
@@ -57,6 +66,19 @@ class FrameResolver:
     def indexed_frames(self) -> int:
         return len(self._index)
 
+    def ordered_frames(self) -> list[IndexedFrame]:
+        frames: list[IndexedFrame] = []
+        for index, (source_frame_id, path) in enumerate(self._index.items(), start=1):
+            frames.append(
+                IndexedFrame(
+                    frame_id=index,
+                    source_frame_id=source_frame_id,
+                    split=self._infer_split(path),
+                    path=path,
+                )
+            )
+        return frames
+
     def get_indexed_path(self, source_frame_id: str) -> Path | None:
         path = self._index.get(source_frame_id)
         if path and path.is_file():
@@ -77,6 +99,18 @@ class FrameResolver:
     def _extract_raw_frame_order(image_file: Path) -> int | None:
         match = KEEP_PATTERN.search(image_file.name)
         return int(match.group(1)) if match else None
+
+    def _infer_split(self, image_path: Path) -> str:
+        try:
+            relative = image_path.resolve().relative_to(self.dataset_path)
+        except Exception:
+            return "dataset"
+
+        if len(relative.parts) >= 3 and relative.parts[1] == "images":
+            return relative.parts[0]
+        if len(relative.parts) >= 2 and relative.parts[0] == "images":
+            return "dataset"
+        return "dataset"
 
     def resolve(self, message: FrameMessage) -> Path | None:
         candidates: list[Path] = []
