@@ -1,6 +1,6 @@
 import os
 
-from fastapi import Header, HTTPException, Query, WebSocket, status
+from fastapi import Header, HTTPException, Query, status
 
 API_SECRET = os.environ.get("API_SECRET", "").strip()
 
@@ -27,9 +27,3 @@ def require_api_key(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or missing API key",
     )
-
-
-def verify_ws_token(websocket: WebSocket) -> bool:
-    if not is_auth_enabled():
-        return True
-    return _token_matches(websocket.query_params.get("token"))

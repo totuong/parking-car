@@ -39,5 +39,6 @@ def create_mjpeg_response(frame_state: FrameState) -> StreamingResponse:
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         },
     )

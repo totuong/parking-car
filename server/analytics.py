@@ -53,13 +53,19 @@ def fetch_analytics_summary() -> dict[str, Any]:
             traffic_rows = _fetchall(
                 cursor,
                 f"""
+                WITH bounds AS (
+                  SELECT MAX(startdate) AS max_start FROM {TABLE_NAME}
+                )
                 SELECT
-                  TO_CHAR(DATE_TRUNC('minute', startdate), 'HH24:MI') AS minute_label,
-                  COUNT(*) FILTER (WHERE occupied = 1) AS entries,
-                  COUNT(*) FILTER (WHERE occupied = 0) AS exits
-                FROM {TABLE_NAME}
-                GROUP BY DATE_TRUNC('minute', startdate)
-                ORDER BY DATE_TRUNC('minute', startdate)
+                  TO_CHAR(DATE_TRUNC('minute', h.startdate), 'HH24:MI') AS minute_label,
+                  COUNT(*) FILTER (WHERE h.occupied = 1) AS entries,
+                  COUNT(*) FILTER (WHERE h.occupied = 0) AS exits
+                FROM {TABLE_NAME} h
+                CROSS JOIN bounds b
+                WHERE b.max_start IS NOT NULL
+                  AND h.startdate >= b.max_start - INTERVAL '30 minutes'
+                GROUP BY DATE_TRUNC('minute', h.startdate)
+                ORDER BY DATE_TRUNC('minute', h.startdate)
                 """,
             )
 
@@ -79,11 +85,27 @@ def fetch_analytics_summary() -> dict[str, Any]:
             turnover_rows = _fetchall(
                 cursor,
                 f"""
-                SELECT id, COUNT(*) AS changes
-                FROM {TABLE_NAME}
-                GROUP BY id
-                ORDER BY changes DESC, id
+                WITH bounds AS (
+                  SELECT MAX(startdate) AS max_start FROM {TABLE_NAME}
+                )
+                SELECT h.id, COUNT(*) AS changes
+                FROM {TABLE_NAME} h
+                CROSS JOIN bounds b
+                WHERE b.max_start IS NOT NULL
+                  AND h.startdate >= b.max_start - INTERVAL '30 minutes'
+                GROUP BY h.id
+                ORDER BY changes DESC, h.id
                 LIMIT 7
+                """,
+            )
+
+            active_slot_rows = _fetchall(
+                cursor,
+                f"""
+                SELECT id, occupied
+                FROM {TABLE_NAME}
+                WHERE status = 'active'
+                ORDER BY id
                 """,
             )
     except Exception as exc:
@@ -114,4 +136,8 @@ def fetch_analytics_summary() -> dict[str, Any]:
             "labels": [row[0] for row in turnover_rows],
             "changes": [int(row[1]) for row in turnover_rows],
         },
+        "active_slots": [
+            {"id": row[0], "occupied": int(row[1])}
+            for row in active_slot_rows
+        ],
     }

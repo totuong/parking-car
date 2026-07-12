@@ -23,6 +23,7 @@ export type ParkingAnalytics = {
     labels: string[]
     changes: number[]
   }
+  active_slots?: Array<{ id: string; occupied: number }>
 }
 
 import { apiFetch } from '../utils/api'

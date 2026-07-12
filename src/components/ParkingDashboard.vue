@@ -77,7 +77,10 @@ const activeCameras = ref(1)
 const simulationActive = ref(false)
 
 const { connect, disconnect, liveMode } = useParkingRealtime()
-const mjpegUrl = withApiToken('/api/stream/mjpeg')
+// Bypass Vite buffering in dev: hit bridge MJPEG directly.
+const mjpegUrl = withApiToken(
+  import.meta.env.DEV ? 'http://127.0.0.1:8000/api/stream/mjpeg' : '/api/stream/mjpeg'
+)
 
 // Selected Slot for Telemetry details
 const selectedSlot = ref<Slot | null>(null)
@@ -121,13 +124,55 @@ function randomChoice<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!
 }
 
-// Get occupancy statistics
-const occupiedCount = computed(() => slots.value.filter(s => s.occupied).length)
-const vacantCount = computed(() => slots.value.filter(s => !s.occupied).length)
+// Get occupancy statistics — ưu tiên số liệu active từ PostgreSQL
+const occupiedCount = computed(() => {
+  const summary = analyticsData.value?.summary
+  if (analyticsData.value?.available && summary) {
+    return summary.occupied
+  }
+  return slots.value.filter((s) => s.occupied).length
+})
+const vacantCount = computed(() => {
+  const summary = analyticsData.value?.summary
+  if (analyticsData.value?.available && summary) {
+    return Math.max(summary.tracked_slots - summary.occupied, 0)
+  }
+  return slots.value.filter((s) => !s.occupied).length
+})
 const occupancyRate = computed(() => {
+  const summary = analyticsData.value?.summary
+  if (analyticsData.value?.available && summary) {
+    return Math.round(summary.occupancy_pct)
+  }
   if (slots.value.length === 0) return 0
   return Math.round((occupiedCount.value / slots.value.length) * 100)
 })
+
+function normalizeSlotId(id: string): string {
+  const match = /^([A-Za-z]+)0*(\d+)$/.exec(id.trim())
+  if (!match) return id.trim().toUpperCase()
+  return `${match[1]!.toUpperCase()}${match[2]}`
+}
+
+function applyActiveSlotsFromDb(activeSlots: Array<{ id: string; occupied: number }>) {
+  const byId = new Map(activeSlots.map((row) => [normalizeSlotId(row.id), row.occupied === 1]))
+  for (const slot of slots.value) {
+    if (slot.noParking) continue
+    const occupied = byId.get(normalizeSlotId(slot.id))
+    if (occupied === undefined) continue
+    if (slot.occupied === occupied) continue
+    slot.occupied = occupied
+    if (occupied) {
+      slot.carColor = slot.carColor ?? randomChoice(carColors)
+      slot.carType = slot.carType ?? randomChoice(carTypes)
+      slot.timestamp = slot.timestamp ?? Date.now()
+    } else {
+      slot.carColor = undefined
+      slot.carType = undefined
+      slot.timestamp = undefined
+    }
+  }
+}
 
 // Initialize slots
 function initSlots() {
@@ -341,6 +386,9 @@ async function loadAnalytics() {
   analyticsLoading.value = true
   try {
     analyticsData.value = await fetchParkingAnalytics()
+    if (analyticsData.value.available && analyticsData.value.active_slots) {
+      applyActiveSlotsFromDb(analyticsData.value.active_slots)
+    }
     if (trafficChart || distributionChart || peakHoursChart) {
       applyAnalyticsToCharts()
     }
@@ -597,7 +645,7 @@ onMounted(() => {
     }
   }, 300)
 
-  analyticsTimer = window.setInterval(loadAnalytics, 30000)
+  analyticsTimer = window.setInterval(loadAnalytics, 5000)
 
   if (!liveMode.value && simulationActive.value) {
     simulateArrival()

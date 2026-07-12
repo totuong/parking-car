@@ -1,94 +1,15 @@
-# Stack hợp nhất: camera-device + postgres-sink + parking-bridge dùng chung dataset volume.
+# Chỉ parking-bridge. Camera MJPEG chạy ở 20252B-digital-twin/docker-compose.yml (:8081).
 services:
-  mqtt-broker:
-    image: minh333/parking-mqtt-broker:latest
-    container_name: parking-mqtt-broker
-    environment:
-      MQTT_TOPIC: ${MQTT_TOPIC:-parking/frames}
-      MQTT_PUB_USERNAME: ${MQTT_PUB_USERNAME}
-      MQTT_PUB_PASSWORD: ${MQTT_PUB_PASSWORD}
-      MQTT_SUB_USERNAME: ${MQTT_SUB_USERNAME}
-      MQTT_SUB_PASSWORD: ${MQTT_SUB_PASSWORD}
-    ports:
-      - "1883:1883"
-
-  postgres-sink:
-    image: minh333/parking-postgres-sink:latest
-    container_name: parking-postgres-sink
-    depends_on:
-      mqtt-broker:
-        condition: service_started
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      MQTT_HOST: mqtt-broker
-      MQTT_PORT: "1883"
-      MQTT_TOPIC: ${MQTT_TOPIC:-parking/frames}
-      MQTT_USERNAME: ${MQTT_SUB_USERNAME}
-      MQTT_PASSWORD: ${MQTT_SUB_PASSWORD}
-
-  dataset-init:
-    image: minh333/parking-camera-device:latest
-    container_name: parking-dataset-init
-    volumes:
-      - parking-dataset:/data/dataset
-    entrypoint:
-      - sh
-      - -c
-      - |
-        if [ ! -d /data/dataset/images ] || [ -z "$$(ls -A /data/dataset/images 2>/dev/null)" ]; then
-          echo "Seeding parking-dataset from camera image..."
-          mkdir -p /data/dataset
-          cp -a /app/data/content/dataset/. /data/dataset/
-        else
-          echo "parking-dataset already seeded."
-        fi
-    restart: "no"
-
-  camera-device:
-    image: minh333/parking-camera-device:latest
-    container_name: parking-camera-device
-    depends_on:
-      mqtt-broker:
-        condition: service_started
-      postgres-sink:
-        condition: service_started
-      dataset-init:
-        condition: service_completed_successfully
-    environment:
-      MQTT_HOST: mqtt-broker
-      MQTT_PORT: "1883"
-      MQTT_TOPIC: ${MQTT_TOPIC:-parking/frames}
-      MQTT_USERNAME: ${MQTT_PUB_USERNAME}
-      MQTT_PASSWORD: ${MQTT_PUB_PASSWORD}
-      CAMERA_INPUT: /data/dataset
-      CAMERA_PUBLISH_INTERVAL: "1"
-      CAMERA_FRAME_INTERVAL_SECONDS: "1"
-      CAMERA_LOOP_DATASET: "true"
-      CAMERA_START_DELAY: "5"
-    volumes:
-      - parking-dataset:/data/dataset:ro
-
   parking-bridge:
     build: ./server
     container_name: parking-bridge
     ports:
       - "127.0.0.1:8000:8000"
-    depends_on:
-      dataset-init:
-        condition: service_completed_successfully
-      camera-device:
-        condition: service_started
     env_file:
       - ./server/.env
     environment:
-      FRAMES_DATASET_PATH: /data/dataset
-      FRAME_POLL_INTERVAL_SECONDS: "1"
-      FRAME_LOOP_DATASET: "true"
-    volumes:
-      - parking-dataset:/data/dataset:ro
+      # Camera stack riêng publish MJPEG trên host :8081
+      CAMERA_STREAM_URL: http://host.docker.internal:8081/stream/mjpeg
+      CAMERA_STREAM_SECRET: ${CAMERA_STREAM_SECRET:-change-me-camera-stream}
     extra_hosts:
       - "host.docker.internal:host-gateway"
-
-volumes:
-  parking-dataset:
-    name: parking-dataset
