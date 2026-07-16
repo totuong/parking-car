@@ -2,7 +2,6 @@ import { ref, type Ref } from 'vue'
 import type { Slot } from '../module/type'
 import type { FrameMessage, TelemetryBroadcast, BridgeHealth } from '../module/mqtt'
 import { withApiToken } from '../utils/api'
-import { getCookie } from '../utils/cookie'
 
 const isConnected = ref(false)
 const mqttConnected = ref(false)
@@ -38,13 +37,20 @@ function parseTimestamp(dateStr: any): number | undefined {
  */
 export function applyRealtimeMessage(payload: any, slots: Ref<Slot[]>) {
   if (payload) {
+    // Bridge gửi { payload: SlotTelemetry[] }; một số nguồn dùng { slots: [...] }
+    const records: any[] | undefined = Array.isArray(payload.slots)
+      ? payload.slots
+      : Array.isArray(payload.payload)
+        ? payload.payload
+        : undefined
+
     if (payload.frameId != null) {
       currentFrameId.value = payload.frameId
     } else if (payload.frame_id != null) {
       currentFrameId.value = payload.frame_id
-    } else if (payload.slots && Array.isArray(payload.slots)) {
+    } else if (records) {
       let maxFrameId = 0
-      for (const record of payload.slots) {
+      for (const record of records) {
         if (record && record.frameId != null) {
           maxFrameId = Math.max(maxFrameId, record.frameId)
         } else if (record && record.frame_id != null) {
@@ -56,7 +62,7 @@ export function applyRealtimeMessage(payload: any, slots: Ref<Slot[]>) {
       }
     }
 
-    if (payload.slots) {
+    if (records) {
       // Helper function to normalize ID by stripping leading zeros in column part
       const getNormId = (id: string): string => {
         if (!id) return ''
@@ -65,27 +71,22 @@ export function applyRealtimeMessage(payload: any, slots: Ref<Slot[]>) {
         return isNaN(colNum) ? id : `${row}${colNum}`
       }
 
-      // Tạo một Map từ payload.slots để tra cứu nhanh hơn, sử dụng normalized ID làm key
       const payloadSlotsMap = new Map<string, any>()
-      for (const record of payload.slots) {
+      for (const record of records) {
         if (record && record.id) {
           payloadSlotsMap.set(getNormId(record.id), record)
         }
       }
 
-      // Duyệt qua tất cả các slot trên frontend
       for (const slot of slots.value) {
         const record = payloadSlotsMap.get(getNormId(slot.id))
         const wasOccupied = slot.occupied
 
         if (record) {
-          // Convert từ occupied (1/0) của backend sang boolean (true/false) của frontend
-          slot.occupied = record.occupied === 1
+          slot.occupied = record.occupied === 1 || record.occupied === true
 
-          // Parse startDate nếu có (là thời gian đỗ xe), fallback sang timestamp
           slot.timestamp = parseTimestamp(record.startDate) ?? parseTimestamp(record.timestamp)
 
-          // Xử lý logic hiển thị mô hình xe 3D tương ứng
           if (!wasOccupied && slot.occupied) {
             slot.carType = slot.carType ?? randomChoice(carTypes)
             slot.carColor = slot.carColor ?? randomChoice(carColors)
@@ -94,7 +95,6 @@ export function applyRealtimeMessage(payload: any, slots: Ref<Slot[]>) {
             delete slot.carColor
           }
         } else {
-          // Những slot không có mặt trong danh sách từ Backend coi như occupied = 0 (trống)
           slot.occupied = false
           slot.timestamp = undefined
           delete slot.carType
@@ -126,18 +126,14 @@ export function useParkingRealtime() {
         }
       }
 
-      const token = getCookie('token')
-      const wsUrl = token 
-        ? `ws://localhost:8080/ws/parking?token=${encodeURIComponent(token)}`
-        : 'ws://localhost:8080/ws/parking'
-
-      console.log(`Đang kết nối đến native WebSocket: ${wsUrl}`)
-      socket = new WebSocket(wsUrl)
+      const url = wsUrl()
+      console.log(`Đang kết nối đến native WebSocket: ${url}`)
+      socket = new WebSocket(url)
 
       socket.onopen = () => {
         isConnected.value = true
         mqttConnected.value = true
-        console.log(`Đã kết nối thành công đến native WebSocket: ${wsUrl}`)
+        console.log(`Đã kết nối thành công đến native WebSocket: ${url}`)
       }
 
       socket.onmessage = (event) => {
