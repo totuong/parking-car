@@ -10,7 +10,7 @@ import { getCookie, deleteCookie } from "./utils/cookie";
 
 const { isConnected, mqttConnected, disconnect } = useParkingRealtime();
 
-const isDark = ref(true);
+const isDark = ref(false);
 const toggleTheme = () => {
   isDark.value = !isDark.value;
 };

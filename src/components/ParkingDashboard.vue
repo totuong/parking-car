@@ -76,7 +76,7 @@ const totalWeeklyVehicles = ref(986)
 const activeCameras = ref(1)
 const simulationActive = ref(false)
 
-const { connect, disconnect, liveMode } = useParkingRealtime()
+const { connect, disconnect, liveMode, initialDataLoaded } = useParkingRealtime()
 // Bypass Vite buffering in dev: hit bridge MJPEG directly.
 const mjpegUrl = withApiToken(
   import.meta.env.DEV ? 'http://127.0.0.1:8000/api/stream/mjpeg' : '/api/stream/mjpeg'
@@ -226,6 +226,8 @@ function initSlots() {
     targetSlot.carType = randomChoice(carTypes)
     targetSlot.timestamp = Date.now() - (Math.random() * 4 * 60 * 60 * 1000) // parked 0 to 4 hours ago
   }
+
+  initialDataLoaded.value = true
 }
 
 // Add a live log entry
@@ -388,6 +390,7 @@ async function loadAnalytics() {
     analyticsData.value = await fetchParkingAnalytics()
     if (analyticsData.value.available && analyticsData.value.active_slots) {
       applyActiveSlotsFromDb(analyticsData.value.active_slots)
+      initialDataLoaded.value = true
     }
     if (trafficChart || distributionChart || peakHoursChart) {
       applyAnalyticsToCharts()
@@ -799,6 +802,7 @@ onBeforeUnmount(() => {
         <!-- Mount the Three.js Interactive Parking Lot -->
         <ThreeParkingLot 
           :slots="slots" 
+          :is-data-loaded="initialDataLoaded"
           @select-slot="handleSelectSlot"
           @hover-slot="handleHoverSlot"
         />

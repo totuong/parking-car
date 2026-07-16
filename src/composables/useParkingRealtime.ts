@@ -7,6 +7,7 @@ const isConnected = ref(false)
 const mqttConnected = ref(false)
 const currentFrameId = ref<number | null>(null)
 const liveMode = ref(true)
+const initialDataLoaded = ref(false)
 
 let socket: WebSocket | null = null
 let reconnectTimer: number | undefined
@@ -137,11 +138,11 @@ export function useParkingRealtime() {
       }
 
       socket.onmessage = (event) => {
-        console.log('Nhận message từ WebSocket:', event.data)
         try {
           const data = JSON.parse(event.data)
           if (slotsRef) {
             applyRealtimeMessage(data, slotsRef)
+            initialDataLoaded.value = true
           }
         } catch (e) {
           console.error('Lỗi phân tích dữ liệu từ WebSocket:', e)
@@ -151,6 +152,7 @@ export function useParkingRealtime() {
       socket.onclose = (event) => {
         isConnected.value = false
         mqttConnected.value = false
+        initialDataLoaded.value = false
         console.log('Đã ngắt kết nối với native WebSocket. Code:', event.code, 'Reason:', event.reason)
 
         // Tự động kết nối lại sau 5 giây nếu connect() vẫn còn hiệu lực
@@ -189,6 +191,7 @@ export function useParkingRealtime() {
     }
     isConnected.value = false
     mqttConnected.value = false
+    initialDataLoaded.value = false
     slotsRef = null
   }
 
@@ -196,6 +199,7 @@ export function useParkingRealtime() {
     isConnected,
     mqttConnected,
     currentFrameId,
+    initialDataLoaded,
     liveMode,
     connect,
     disconnect,

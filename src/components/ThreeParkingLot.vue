@@ -16,6 +16,7 @@ type Slot = {
 
 const props = defineProps<{
   slots: Slot[]
+  isDataLoaded?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -105,6 +106,18 @@ interface ActiveAnimation {
   gateWaitTime?: number
 }
 const activeAnimations = ref<ActiveAnimation[]>([])
+const isLoading = ref(true)
+const isThreeReady = ref(false)
+
+// Close loading overlay when both initial data is loaded and 3D scene initialization is complete
+watch([() => props.isDataLoaded, isThreeReady], ([dataLoaded, threeReady]) => {
+  if (dataLoaded && threeReady) {
+    // 500ms delay to ensure static vehicles render smoothly before overlay fades out
+    setTimeout(() => {
+      isLoading.value = false
+    }, 500)
+  }
+}, { immediate: true })
 
 // Layout helper
 function getSlotCoords(slotId: string): { x: number; y: number; z: number; rotY: number } {
@@ -229,7 +242,7 @@ function initThree() {
   // Create decorative trees
   buildTrees()
 
-  // Synchronize initial cars
+  // Rebuild static cars when simulated time transitions day/night
   syncCars()
 
   // 8. Event Listeners
@@ -238,6 +251,8 @@ function initThree() {
   containerRef.value.addEventListener('click', onMouseClick)
 
   // 9. Start Loop
+  lastLightingHour = timeOfDay.value
+  isThreeReady.value = true
   animate()
 }
 
@@ -506,7 +521,7 @@ function buildLampposts() {
     post.add(target)
     spotlight.target = target
     
-    spotlight.castShadow = true
+    spotlight.castShadow = false
     spotlight.shadow.mapSize.width = 512
     spotlight.shadow.mapSize.height = 512
     spotlight.shadow.bias = -0.002
@@ -599,7 +614,7 @@ function buildEntranceGate() {
   // Booth Interior Light (PointLight) glowing at night
   const boothLight = new THREE.PointLight(0xfff7d6, isNight ? 2.0 : 0.0, 4)
   boothLight.position.set(0, 1.5, 0)
-  boothLight.castShadow = true
+  boothLight.castShadow = false
   boothGroup.add(boothLight)
   
   guardBoothLightRef = boothLight
@@ -662,7 +677,7 @@ function buildEntranceGate() {
   archTarget.position.set(0, 0, 2.0)
   archGroup.add(archTarget)
   archSpotlight.target = archTarget
-  archSpotlight.castShadow = true
+  archSpotlight.castShadow = false
   archGroup.add(archSpotlight)
   
   archSpotlightRef = archSpotlight
@@ -795,7 +810,7 @@ function buildExitGate() {
   // Terminal Interior Light
   const boothLight = new THREE.PointLight(0x00f3ff, isNightVal ? 2.0 : 0.0, 4)
   boothLight.position.set(0, 1.5, 0)
-  boothLight.castShadow = true
+  boothLight.castShadow = false
   boothGroup.add(boothLight)
   
   exitBoothLightRef = boothLight
@@ -858,7 +873,7 @@ function buildExitGate() {
   archTarget.position.set(0, 0, -2.0)
   archGroup.add(archTarget)
   archSpotlight.target = archTarget
-  archSpotlight.castShadow = true
+  archSpotlight.castShadow = false
   archGroup.add(archSpotlight)
   
   exitArchSpotlightRef = archSpotlight
@@ -1199,14 +1214,14 @@ function updateEnvironmentLighting() {
 
   const lamppostsActive = !isDay
   lamppostLights.forEach(({ spotlight, bulb }) => {
+    // @ts-ignore
+    const mat = bulb.material
     if (lamppostsActive) {
-      bulb.material.color.setHex(0xfff7d6)
-      // Pulse brightened for vibrant night aesthetics
-      const pulse = 9.0 + Math.sin(Date.now() * 0.003) * 1.5
-      spotlight.intensity = pulse
+      if (mat.color) mat.color.setHex(0xfff7d6)
+      spotlight.intensity = 9.0
       spotlight.visible = true
     } else {
-      bulb.material.color.setHex(0x555555)
+      if (mat.color) mat.color.setHex(0x555555)
       spotlight.intensity = 0
       spotlight.visible = false
     }
@@ -1377,8 +1392,8 @@ function syncCars() {
 
 // React to slot property changes (Entrance / Departure animations)
 watch(() => props.slots, (newSlots: Slot[]) => {
-  // Check if this is the first execution (initialize states)
-  if (lastOccupiedStates.size === 0) {
+  // Check if this is the first execution or we are still loading/initializing
+  if (lastOccupiedStates.size === 0 || isLoading.value) {
     newSlots.forEach(s => {
       lastOccupiedStates.set(s.id, s.occupied)
     })
@@ -1604,6 +1619,19 @@ function handleResize() {
 
 // Main Frame loop
 let lastTime = 0
+let lastLightingHour = -1
+
+function updateLamppostPulse() {
+  const hour = timeOfDay.value
+  const isNight = hour < 6.0 || hour > 18.0
+  if (isNight && lamppostLights.length > 0) {
+    const pulse = 9.0 + Math.sin(Date.now() * 0.003) * 1.5
+    lamppostLights.forEach(({ spotlight }) => {
+      spotlight.intensity = pulse
+    })
+  }
+}
+
 function animate(time = 0) {
   animationFrameId = requestAnimationFrame(animate)
 
@@ -1613,8 +1641,14 @@ function animate(time = 0) {
   // Update clock simulation
   updateSystemTime()
 
-  // Update environmental lighting animations
-  updateEnvironmentLighting()
+  // Update environmental lighting animations only when timeOfDay changes significantly
+  if (Math.abs(timeOfDay.value - lastLightingHour) > 0.01) {
+    updateEnvironmentLighting()
+    lastLightingHour = timeOfDay.value
+  }
+
+  // Light pulse updates per frame
+  updateLamppostPulse()
 
   // 1. Process active path animations
   updateCarAnimations(delta)
@@ -1792,6 +1826,14 @@ onMounted(() => {
   // Delay slightly to ensure layout container has width
   setTimeout(() => {
     initThree()
+    
+    // Fail-safe timeout: Force dismiss loading overlay after 10 seconds if backend data load fails or is slow
+    setTimeout(() => {
+      if (isLoading.value) {
+        console.warn('3D Twin: Initial data sync timeout. Force dismissing loading screen.')
+        isLoading.value = false
+      }
+    }, 10000)
   }, 100)
 })
 
@@ -1850,6 +1892,30 @@ function setEntranceView() {
       ? 'border-slate-800 bg-slate-950 shadow-cyan-950/20' 
       : 'border-slate-200 bg-white shadow-[0_4px_25px_rgba(0,0,0,0.015)]'"
   >
+    <!-- Premium Loading Overlay -->
+    <Transition name="fade">
+      <div 
+        v-if="isLoading" 
+        class="absolute inset-0 z-30 flex flex-col items-center justify-center backdrop-blur-md transition-all duration-500"
+        :class="isDark ? 'bg-slate-950/90' : 'bg-white/90'"
+      >
+        <div class="flex flex-col items-center gap-4">
+          <div class="relative w-14 h-14">
+            <div class="absolute inset-0 rounded-full border-4 border-cyan-500/10"></div>
+            <div class="absolute inset-0 rounded-full border-4 border-t-cyan-500 border-r-cyan-500 animate-spin"></div>
+          </div>
+          <div class="flex flex-col items-center text-center gap-1.5">
+            <h3 class="text-xs font-black uppercase tracking-widest text-cyan-500">
+              {{ locale === 'vi' ? 'Khởi tạo Mô phỏng 3D...' : 'Initializing 3D Twin...' }}
+            </h3>
+            <p class="text-[10px] text-slate-500 max-w-[220px]">
+              {{ locale === 'vi' ? 'Đang đồng bộ dữ liệu bãi đỗ xe và tối ưu hóa tài nguyên.' : 'Synchronizing parking lot data and optimizing assets.' }}
+            </p>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <!-- Camera controls shortcut bar -->
     <div class="absolute top-4 left-4 z-20 flex gap-2">
       <button 
@@ -1990,4 +2056,10 @@ function setEntranceView() {
 
 <style scoped>
 /* Standard glassmorphic elements styling if required */
+.fade-leave-active {
+  transition: opacity 0.5s ease;
+}
+.fade-leave-to {
+  opacity: 0;
+}
 </style>
