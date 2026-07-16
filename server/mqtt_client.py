@@ -115,21 +115,22 @@ class MqttBridge:
             return
 
         image_bytes = self.frame_resolver.read_bytes(frame_message)
-        if not image_bytes:
-            logger.warning(
-                "Skipping frame_id=%s source_frame_id=%s: image missing",
-                frame_message.frame_id,
-                frame_message.source_frame_id,
+        if image_bytes:
+            self.frame_state.update(
+                frame_id=frame_message.frame_id,
+                source_frame_id=frame_message.source_frame_id,
+                split=frame_message.split,
+                image_bytes=image_bytes,
+                payload=frame_message.payload,
             )
-            return
-
-        self.frame_state.update(
-            frame_id=frame_message.frame_id,
-            source_frame_id=frame_message.source_frame_id,
-            split=frame_message.split,
-            image_bytes=image_bytes,
-            payload=frame_message.payload,
-        )
+        else:
+            # Camera stream mode: MJPEG supplies images; MQTT supplies slot telemetry.
+            self.frame_state.update_payload(
+                frame_id=frame_message.frame_id,
+                source_frame_id=frame_message.source_frame_id,
+                split=frame_message.split,
+                payload=frame_message.payload,
+            )
 
         telemetry = TelemetryBroadcast(
             frame_id=frame_message.frame_id,

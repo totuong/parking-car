@@ -118,12 +118,13 @@ async def consume_camera_mjpeg(
                                 else f"{frame_counter:04d}"
                             )
 
+                            current = frame_state.snapshot()
                             frame_state.update(
-                                frame_id=frame_counter,
+                                frame_id=current.frame_id or frame_counter,
                                 source_frame_id=source_frame_id,
-                                split="live",
+                                split=current.split or "live",
                                 image_bytes=jpeg,
-                                payload=[],
+                                payload=list(current.payload),
                             )
 
         except asyncio.CancelledError:
