@@ -11,12 +11,5 @@ services:
       # Camera stack riêng publish MJPEG trên host :8081
       CAMERA_STREAM_URL: http://host.docker.internal:8081/stream/mjpeg
       CAMERA_STREAM_SECRET: ${CAMERA_STREAM_SECRET:-change-me-camera-stream}
-      # MQTT broker của 20252B-digital-twin publish trên host :1883
-      MQTT_HOST: host.docker.internal
-      MQTT_PORT: "1883"
-      MQTT_TOPIC: ${MQTT_TOPIC:-parking/frames}
-      MQTT_REQUIRE_AUTH: "true"
-      MQTT_USERNAME: ${MQTT_SUB_USERNAME:-parking_sub}
-      MQTT_PASSWORD: ${MQTT_SUB_PASSWORD:-parking_sub_secret}
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -53,32 +53,6 @@ class FrameState:
 
         return sequence
 
-    def update_payload(
-        self,
-        frame_id: int,
-        source_frame_id: str,
-        split: str,
-        payload: list[SlotTelemetry],
-        image_bytes: bytes | None = None,
-    ) -> int:
-        """Update slot telemetry; keep existing MJPEG image unless a new one is provided."""
-        with self._lock:
-            self._snapshot = FrameSnapshot(
-                frame_id=frame_id,
-                source_frame_id=source_frame_id,
-                split=split,
-                image_bytes=image_bytes if image_bytes is not None else self._snapshot.image_bytes,
-                payload=payload,
-                received_at=datetime.now(timezone.utc),
-                sequence=self._snapshot.sequence + 1,
-            )
-            sequence = self._snapshot.sequence
-
-        if self._loop and self._update_event:
-            self._loop.call_soon_threadsafe(self._update_event.set)
-
-        return sequence
-
     def snapshot(self) -> FrameSnapshot:
         with self._lock:
             return FrameSnapshot(

@@ -9,7 +9,6 @@ const locale = inject<any>('locale')
 const toggleLocale = inject<any>('toggleLocale')
 const t = inject<any>('t')
 const isConnected = inject<any>('isConnected')
-const mqttConnected = inject<any>('mqttConnected')
 const logout = inject<any>('logout')
 
 const clock = ref(new Date())
@@ -115,12 +114,11 @@ onBeforeUnmount(() => {
         >
           {{ isConnected ? t('online') : (locale === 'vi' ? 'Ngoại tuyến' : 'Offline') }}
         </span>
-        <span 
+        <span
           v-if="isConnected"
-          class="text-[9px] font-bold uppercase tracking-wider"
-          :class="mqttConnected ? 'text-cyan-500' : 'text-amber-500'"
+          class="text-[9px] font-bold uppercase tracking-wider text-cyan-500"
         >
-          {{ mqttConnected ? 'MQTT' : 'WS' }}
+          LIVE
         </span>
       </div>
 

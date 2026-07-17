@@ -100,7 +100,6 @@ let peakHoursChart: Chart | null = null
 let analyticsTimer: number | undefined
 
 const analyticsData = ref<ParkingAnalytics | null>(null)
-const analyticsLoading = ref(false)
 
 // Activity Feed Log entries
 const logs = ref<LogEntry[]>([
@@ -385,20 +384,16 @@ function handleHoverSlot(slot: Slot | null) {
 }
 
 async function loadAnalytics() {
-  analyticsLoading.value = true
   try {
     analyticsData.value = await fetchParkingAnalytics()
     if (analyticsData.value.available && analyticsData.value.active_slots) {
       applyActiveSlotsFromDb(analyticsData.value.active_slots)
-      initialDataLoaded.value = true
     }
     if (trafficChart || distributionChart || peakHoursChart) {
       applyAnalyticsToCharts()
     }
   } catch {
     analyticsData.value = { available: false }
-  } finally {
-    analyticsLoading.value = false
   }
 }
 
@@ -637,18 +632,24 @@ watch([isDark, locale], () => {
 
 onMounted(() => {
   initSlots()
-  connect(slots)
+  connect()
+  // Don't block 3D / UI on slow analytics — mark ready immediately in live mode.
+  if (liveMode.value) {
+    initialDataLoaded.value = true
+  }
 
-  setTimeout(async () => {
-    await loadAnalytics()
+  setTimeout(() => {
     initCharts()
-    applyAnalyticsToCharts()
     if (!analyticsData.value?.available) {
       updateChartsTelemetry()
     }
+    // Fire-and-forget: charts/slots update when DB responds
+    void loadAnalytics()
   }, 300)
 
-  analyticsTimer = window.setInterval(loadAnalytics, 60000)
+  analyticsTimer = window.setInterval(() => {
+    void loadAnalytics()
+  }, 60000)
 
   if (!liveMode.value && simulationActive.value) {
     simulateArrival()

@@ -7,20 +7,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, status
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from starlette.websockets import WebSocketDisconnect
 
 from analytics import fetch_analytics_summary
-from auth import is_auth_enabled, require_api_key, verify_ws_token
+from auth import is_auth_enabled, require_api_key
 from frame_resolver import FrameResolver, IndexedFrame
 from frame_state import FrameState
 from mjpeg_stream import create_mjpeg_response
-from models import FrameMessage, TelemetryBroadcast
-from mqtt_client import MqttBridge
+from models import FrameMessage
 from stream_client import consume_camera_mjpeg
-from websocket_manager import WebSocketManager
 
 load_dotenv()
 
@@ -43,9 +40,6 @@ def _resolve_dataset_path() -> Path:
 
 FRAMES_DATASET_PATH = _resolve_dataset_path()
 CAMERA_STREAM_URL = os.environ.get("CAMERA_STREAM_URL", "").strip()
-MQTT_HOST = os.environ.get("MQTT_HOST", "localhost").strip() or "localhost"
-MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
-MQTT_TOPIC = os.environ.get("MQTT_TOPIC", "parking/frames").strip() or "parking/frames"
 INGEST_STALE_SECONDS = int(os.environ.get("INGEST_STALE_SECONDS", "5"))
 FRAME_POLL_INTERVAL_SECONDS = float(os.environ.get("FRAME_POLL_INTERVAL_SECONDS", "1"))
 FRAME_LOOP_DATASET = os.environ.get("FRAME_LOOP_DATASET", "true").strip().lower() in {
@@ -69,18 +63,12 @@ CORS_ORIGINS = _parse_cors_origins()
 
 frame_state = FrameState()
 frame_resolver = FrameResolver(FRAMES_DATASET_PATH)
-ws_manager = WebSocketManager()
-mqtt_bridge: MqttBridge | None = None
 poller_task: asyncio.Task | None = None
 stream_task: asyncio.Task | None = None
 stream_enabled = bool(CAMERA_STREAM_URL)
 poller_enabled = (not stream_enabled) and frame_resolver.indexed_frames > 0
 poller_running = False
 stream_running = False
-
-
-async def broadcast_telemetry(telemetry: TelemetryBroadcast):
-    await ws_manager.broadcast(telemetry)
 
 
 def _is_recent(snapshot_received_at: datetime | None) -> bool:
@@ -196,7 +184,7 @@ async def run_camera_stream():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global poller_task, stream_task, mqtt_bridge
+    global poller_task, stream_task
     loop = asyncio.get_running_loop()
     frame_state.bind_loop(loop)
 
@@ -204,16 +192,6 @@ async def lifespan(app: FastAPI):
         logger.info("API auth enabled; CORS origins=%s", CORS_ORIGINS)
     else:
         logger.warning("API auth disabled (API_SECRET not set)")
-
-    mqtt_bridge = MqttBridge(
-        host=MQTT_HOST,
-        port=MQTT_PORT,
-        topic=MQTT_TOPIC,
-        frame_resolver=frame_resolver,
-        frame_state=frame_state,
-        on_telemetry=broadcast_telemetry,
-    )
-    mqtt_bridge.start(loop)
 
     if stream_enabled:
         stream_task = asyncio.create_task(run_camera_stream(), name="camera-mjpeg-consumer")
@@ -224,14 +202,10 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning(
             "Parking bridge started without image ingest "
-            "(set CAMERA_STREAM_URL or provide FRAMES_DATASET_PATH); MQTT still active for slots"
+            "(set CAMERA_STREAM_URL or provide FRAMES_DATASET_PATH)"
         )
 
     yield
-
-    if mqtt_bridge:
-        mqtt_bridge.stop()
-        mqtt_bridge = None
 
     for task_name, task in (("stream", stream_task), ("poller", poller_task)):
         if not task:
@@ -262,10 +236,6 @@ async def health():
     snapshot = frame_state.snapshot()
     ingest_mode = "camera_stream" if stream_enabled else "polling"
     return {
-        "mqtt_connected": bool(mqtt_bridge and mqtt_bridge.connected),
-        "mqtt_auth_required": bool(mqtt_bridge and mqtt_bridge.auth_required),
-        "mqtt_auth_configured": bool(mqtt_bridge and mqtt_bridge.auth_configured),
-        "mqtt_username": mqtt_bridge.username if mqtt_bridge else None,
         "ingest_mode": ingest_mode,
         "ingest_connected": _is_recent(snapshot.received_at),
         "camera_stream_url": CAMERA_STREAM_URL or None,
@@ -278,35 +248,8 @@ async def health():
         "last_frame_id": snapshot.frame_id,
         "last_source_frame_id": snapshot.source_frame_id,
         "indexed_frames": frame_resolver.indexed_frames,
-        "clients": ws_manager.client_count,
         "slot_count": len(snapshot.payload),
     }
-
-
-@app.websocket("/ws/telemetry")
-async def websocket_telemetry(websocket: WebSocket):
-    if not verify_ws_token(websocket):
-        await websocket.close(code=4401, reason="Unauthorized")
-        return
-
-    await ws_manager.connect(websocket)
-    try:
-        snapshot = frame_state.snapshot()
-        if snapshot.payload:
-            await websocket.send_json(
-                TelemetryBroadcast(
-                    frame_id=snapshot.frame_id or 0,
-                    source_frame_id=snapshot.source_frame_id or "",
-                    split=snapshot.split or "live",
-                    payload=snapshot.payload,
-                ).model_dump()
-            )
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        pass
-    finally:
-        await ws_manager.disconnect(websocket)
 
 
 @app.get("/api/analytics/summary")

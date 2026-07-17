@@ -3,4 +3,3 @@ uvicorn[standard]
 python-dotenv
 psycopg2-binary
 httpx
-paho-mqtt

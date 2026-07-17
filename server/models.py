@@ -13,11 +13,4 @@ class FrameMessage(BaseModel):
     frame_id: int
     source_frame_id: str
     image: str
-    payload: list[SlotTelemetry]
-
-
-class TelemetryBroadcast(BaseModel):
-    frame_id: int
-    source_frame_id: str
-    split: str
-    payload: list[SlotTelemetry]
+    payload: list[SlotTelemetry] = []
