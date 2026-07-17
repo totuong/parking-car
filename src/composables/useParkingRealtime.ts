@@ -1,7 +1,7 @@
 import { ref, type Ref } from 'vue'
 import type { Slot } from '../module/type'
-import type { FrameMessage, TelemetryBroadcast, BridgeHealth } from '../module/mqtt'
 import { withApiToken } from '../utils/api'
+import { getCookie } from '../utils/cookie'
 
 const isConnected = ref(false)
 const mqttConnected = ref(false)
@@ -22,9 +22,10 @@ function randomChoice<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!
 }
 function wsUrl(): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const base = `${protocol}//${window.location.host}/ws/telemetry`
-  return withApiToken(base)
+  const protocol = 'ws:'
+  const base = `${protocol}//localhost:8080/ws/parking`
+  const token = getCookie('token')
+  return token ? `${base}?token=${encodeURIComponent(token)}` : base
 }
 
 function parseTimestamp(dateStr: any): number | undefined {
@@ -37,70 +38,107 @@ function parseTimestamp(dateStr: any): number | undefined {
  * Cập nhật trạng thái các slot dựa trên thông tin thời gian thực từ Spring Boot WebSocket
  */
 export function applyRealtimeMessage(payload: any, slots: Ref<Slot[]>) {
-  if (payload) {
-    // Bridge gửi { payload: SlotTelemetry[] }; một số nguồn dùng { slots: [...] }
-    const records: any[] | undefined = Array.isArray(payload.slots)
-      ? payload.slots
-      : Array.isArray(payload.payload)
-        ? payload.payload
-        : undefined
+  if (!payload) return
 
-    if (payload.frameId != null) {
-      currentFrameId.value = payload.frameId
-    } else if (payload.frame_id != null) {
-      currentFrameId.value = payload.frame_id
-    } else if (records) {
-      let maxFrameId = 0
-      for (const record of records) {
-        if (record && record.frameId != null) {
-          maxFrameId = Math.max(maxFrameId, record.frameId)
-        } else if (record && record.frame_id != null) {
-          maxFrameId = Math.max(maxFrameId, record.frame_id)
-        }
+  // 1. Phân tích để lấy danh sách records từ các định dạng khác nhau
+  let records: any[] | undefined = undefined
+
+  if (Array.isArray(payload)) {
+    records = payload
+  } else if (Array.isArray(payload.slots)) {
+    records = payload.slots
+  } else if (Array.isArray(payload.payload)) {
+    records = payload.payload
+  } else if (Array.isArray(payload.data)) {
+    records = payload.data
+  } else if (Array.isArray(payload.parkingSlots)) {
+    records = payload.parkingSlots
+  } else if (
+    (payload.id != null || payload.slotId != null || payload.slot_id != null) &&
+    (payload.occupied != null || payload.status != null || payload.isOccupied != null)
+  ) {
+    // Bản tin cập nhật đơn lẻ cho 1 slot
+    records = [payload]
+  }
+
+  // Cập nhật frameId nếu có
+  if (payload.frameId != null) {
+    currentFrameId.value = payload.frameId
+  } else if (payload.frame_id != null) {
+    currentFrameId.value = payload.frame_id
+  } else if (records) {
+    let maxFrameId = 0
+    for (const record of records) {
+      if (record && record.frameId != null) {
+        maxFrameId = Math.max(maxFrameId, record.frameId)
+      } else if (record && record.frame_id != null) {
+        maxFrameId = Math.max(maxFrameId, record.frame_id)
       }
-      if (maxFrameId > 0) {
-        currentFrameId.value = maxFrameId
+    }
+    if (maxFrameId > 0) {
+      currentFrameId.value = maxFrameId
+    }
+  }
+
+  if (records) {
+    // Hàm chuẩn hóa slot ID (ví dụ: C01 -> C1, A01 -> A1)
+    const getNormId = (id: any): string => {
+      if (id == null) return ''
+      const strId = String(id).trim()
+      if (!strId) return ''
+      const row = strId.charAt(0)
+      const colNum = parseInt(strId.substring(1), 10)
+      return isNaN(colNum) ? strId : `${row}${colNum}`
+    }
+
+    const payloadSlotsMap = new Map<string, any>()
+    for (const record of records) {
+      if (record) {
+        const idVal = record.id ?? record.slotId ?? record.slot_id ?? record.code
+        if (idVal != null) {
+          payloadSlotsMap.set(getNormId(idVal), record)
+        }
       }
     }
 
-    if (records) {
-      // Helper function to normalize ID by stripping leading zeros in column part
-      const getNormId = (id: string): string => {
-        if (!id) return ''
-        const row = id.charAt(0)
-        const colNum = parseInt(id.substring(1), 10)
-        return isNaN(colNum) ? id : `${row}${colNum}`
-      }
+    // Nếu số lượng records truyền về lớn (ví dụ > 5), xem như bản tin snapshot đầy đủ
+    // và sẽ reset trạng thái của những slot không xuất hiện trong bản tin.
+    // Ngược lại, nếu là cập nhật đơn lẻ (incremental), chỉ cập nhật slot được truyền về.
+    const isSnapshot = records.length > 5
 
-      const payloadSlotsMap = new Map<string, any>()
-      for (const record of records) {
-        if (record && record.id) {
-          payloadSlotsMap.set(getNormId(record.id), record)
-        }
-      }
+    for (const slot of slots.value) {
+      const normId = getNormId(slot.id)
+      const hasRecord = payloadSlotsMap.has(normId)
 
-      for (const slot of slots.value) {
-        const record = payloadSlotsMap.get(getNormId(slot.id))
+      if (hasRecord) {
+        const record = payloadSlotsMap.get(normId)
         const wasOccupied = slot.occupied
 
-        if (record) {
-          slot.occupied = record.occupied === 1 || record.occupied === true
+        // Phân tích trạng thái occupied từ nhiều trường có thể có
+        const rawOccupied = record.occupied ?? record.isOccupied ?? record.status
+        const isSlotOccupied = 
+          rawOccupied === 1 || 
+          rawOccupied === true || 
+          rawOccupied === 'occupied' || 
+          rawOccupied === 'busy' || 
+          rawOccupied === 'OCCUPIED'
 
-          slot.timestamp = parseTimestamp(record.startDate) ?? parseTimestamp(record.timestamp)
+        slot.occupied = isSlotOccupied
+        slot.timestamp = parseTimestamp(record.startDate) ?? parseTimestamp(record.timestamp)
 
-          if (!wasOccupied && slot.occupied) {
-            slot.carType = slot.carType ?? randomChoice(carTypes)
-            slot.carColor = slot.carColor ?? randomChoice(carColors)
-          } else if (wasOccupied && !slot.occupied) {
-            delete slot.carType
-            delete slot.carColor
-          }
-        } else {
-          slot.occupied = false
-          slot.timestamp = undefined
+        if (!wasOccupied && slot.occupied) {
+          slot.carType = slot.carType ?? record.carType ?? randomChoice(carTypes)
+          slot.carColor = slot.carColor ?? record.carColor ?? randomChoice(carColors)
+        } else if (wasOccupied && !slot.occupied) {
           delete slot.carType
           delete slot.carColor
         }
+      } else if (isSnapshot) {
+        // Chỉ reset nếu đây là bản tin snapshot đầy đủ
+        slot.occupied = false
+        slot.timestamp = undefined
+        delete slot.carType
+        delete slot.carColor
       }
     }
   }
@@ -139,13 +177,15 @@ export function useParkingRealtime() {
 
       socket.onmessage = (event) => {
         try {
+          console.log('[WebSocket ws/parking] Tin nhắn thô nhận được:', event.data)
           const data = JSON.parse(event.data)
+          console.log('[WebSocket ws/parking] Dữ liệu JSON đã phân tích:', data)
           if (slotsRef) {
             applyRealtimeMessage(data, slotsRef)
             initialDataLoaded.value = true
           }
         } catch (e) {
-          console.error('Lỗi phân tích dữ liệu từ WebSocket:', e)
+          console.error('[WebSocket ws/parking] Lỗi phân tích dữ liệu hoặc xử lý:', e)
         }
       }
 
