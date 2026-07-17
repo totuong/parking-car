@@ -648,7 +648,7 @@ onMounted(() => {
     }
   }, 300)
 
-  analyticsTimer = window.setInterval(loadAnalytics, 5000)
+  analyticsTimer = window.setInterval(loadAnalytics, 60000)
 
   if (!liveMode.value && simulationActive.value) {
     simulateArrival()
