@@ -3,7 +3,8 @@ import { ref, onMounted, onBeforeUnmount, nextTick, computed, watch, inject } fr
 import { Slot, LogEntry } from '../module/type'
 import { 
   Car, Compass, Activity, Server, Play, Pause, RefreshCw,
-  Video, Eye, TrendingUp, Clock, PieChart, Cpu, CheckCircle2, ChevronRight, Zap
+  Video, Eye, TrendingUp, Clock, PieChart, Cpu, CheckCircle2, ChevronRight, Zap,
+  Plus, Minus, Maximize, Columns
 } from 'lucide-vue-next'
 import Chart from 'chart.js/auto'
 import ThreeParkingLot from './ThreeParkingLot.vue'
@@ -110,6 +111,79 @@ const logs = ref<LogEntry[]>([
 ])
 
 const logsContainerRef = ref<HTMLDivElement | null>(null)
+
+// Zoom & Pan CCTV State
+const zoomLevel = ref(1)
+const panOffset = ref({ x: 0, y: 0 })
+const isPanning = ref(false)
+const panStart = ref({ x: 0, y: 0 })
+const comparisonMode = ref(false)
+
+function zoomIn() {
+  zoomLevel.value = Math.min(zoomLevel.value + 0.5, 4)
+}
+
+function zoomOut() {
+  zoomLevel.value = Math.max(zoomLevel.value - 0.5, 1)
+  if (zoomLevel.value === 1) {
+    resetZoom()
+  }
+}
+
+function resetZoom() {
+  zoomLevel.value = 1
+  panOffset.value = { x: 0, y: 0 }
+}
+
+function handleMouseDown(e: MouseEvent) {
+  if (zoomLevel.value <= 1) return
+  isPanning.value = true
+  panStart.value = {
+    x: e.clientX - panOffset.value.x,
+    y: e.clientY - panOffset.value.y
+  }
+}
+
+function handleMouseMove(e: MouseEvent) {
+  if (!isPanning.value) return
+  panOffset.value = {
+    x: e.clientX - panStart.value.x,
+    y: e.clientY - panStart.value.y
+  }
+}
+
+function handleMouseUp() {
+  isPanning.value = false
+}
+
+function handleTouchStart(e: TouchEvent) {
+  if (zoomLevel.value <= 1 || e.touches.length !== 1) return
+  const touch = e.touches[0]!
+  isPanning.value = true
+  panStart.value = {
+    x: touch.clientX - panOffset.value.x,
+    y: touch.clientY - panOffset.value.y
+  }
+}
+
+function handleTouchMove(e: TouchEvent) {
+  if (!isPanning.value || e.touches.length !== 1) return
+  const touch = e.touches[0]!
+  panOffset.value = {
+    x: touch.clientX - panStart.value.x,
+    y: touch.clientY - panStart.value.y
+  }
+}
+
+function toggleComparisonMode() {
+  comparisonMode.value = !comparisonMode.value
+  resetZoom()
+}
+
+function scrollToSection(id: string) {
+  const el = document.getElementById(id)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 // Simulation timers
 let arrivalTimer: number | undefined
@@ -630,9 +704,17 @@ watch([isDark, locale], () => {
   })
 })
 
+watch(logs, () => {
+  nextTick(() => {
+    if (logsContainerRef.value) {
+      logsContainerRef.value.scrollTop = logsContainerRef.value.scrollHeight
+    }
+  })
+}, { deep: true })
+
 onMounted(() => {
   initSlots()
-  connect()
+  connect(slots, logs)
   // Don't block 3D / UI on slow analytics — mark ready immediately in live mode.
   if (liveMode.value) {
     initialDataLoaded.value = true
@@ -766,7 +848,7 @@ onBeforeUnmount(() => {
     <section id="section-twin" class="section-anchor scroll-mt-6 rounded-2xl transition-shadow duration-300">
     <div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
       
-      <!-- 3D Map (Span 3 on large screens) -->
+      <!-- 3D Map (Span 3 on large screens) / Comparison Layout -->
       <div class="xl:col-span-3 flex flex-col gap-4">
         <div class="flex items-center justify-between border-b pb-3" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
           <div>
@@ -774,11 +856,23 @@ onBeforeUnmount(() => {
               class="text-lg font-black tracking-wider uppercase flex items-center gap-2 transition-colors duration-300"
               :class="isDark ? 'text-cyan-400' : 'text-cyan-600'"
             >
-              <Cpu class="w-5 h-5 animate-pulse" /> {{ t('twin_map_title') }}
+              <Cpu class="w-5 h-5 animate-pulse" /> {{ comparisonMode ? (locale === 'vi' ? 'Đối Chiếu 3D & Cam' : '3D Twin & CCTV Comparison') : t('twin_map_title') }}
             </h2>
             <p class="text-xs" :class="isDark ? 'text-slate-500' : 'text-slate-500'">{{ t('twin_map_desc') }}</p>
           </div>
           <div class="flex items-center gap-3">
+            <!-- Compare Mode Button -->
+            <button 
+              @click="toggleComparisonMode" 
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold select-none cursor-pointer transition active:scale-95 shadow-sm"
+              :class="comparisonMode 
+                ? (isDark ? 'bg-cyan-950/40 border-cyan-500/30 text-cyan-400 hover:bg-cyan-900/30' : 'bg-cyan-50 border-cyan-200 text-cyan-600 hover:bg-cyan-100') 
+                : (isDark ? 'bg-slate-900 border-slate-850 hover:bg-slate-850/80 text-slate-300' : 'bg-white border-slate-200 text-slate-650 hover:bg-slate-50 text-slate-600')"
+            >
+              <Columns class="w-3.5 h-3.5" /> 
+              {{ comparisonMode ? (locale === 'vi' ? 'Đóng đối chiếu' : 'Close Compare') : (locale === 'vi' ? 'Đối chiếu 3D & Cam' : 'Compare 3D & Cam') }}
+            </button>
+
             <!-- Simulation Status indicator -->
             <div 
               class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded border text-[10px] uppercase font-bold transition-all duration-300"
@@ -800,8 +894,119 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <!-- Mount the Three.js Interactive Parking Lot -->
+        <!-- Mount the Three.js Interactive Parking Lot / Comparison view -->
+        <div v-if="comparisonMode" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- 3D Twin Panel -->
+          <div class="flex flex-col gap-2">
+            <div 
+              class="text-[9px] font-mono font-bold uppercase tracking-wider border-b pb-1.5 flex justify-between"
+              :class="isDark ? 'border-slate-800/80 text-slate-400' : 'border-slate-150 text-slate-500'"
+            >
+              <span>3D Digital Twin Map</span>
+              <span class="text-cyan-455 text-cyan-500 font-bold">Interactive WebGL</span>
+            </div>
+            <div class="w-full h-[380px] rounded-xl overflow-hidden relative border" :class="isDark ? 'border-slate-850' : 'border-slate-200'">
+              <ThreeParkingLot 
+                :slots="slots" 
+                :is-data-loaded="initialDataLoaded"
+                @select-slot="handleSelectSlot"
+                @hover-slot="handleHoverSlot"
+              />
+            </div>
+          </div>
+
+          <!-- CCTV Stream Panel -->
+          <div class="flex flex-col gap-2">
+            <div 
+              class="text-[9px] font-mono font-bold uppercase tracking-wider border-b pb-1.5 flex justify-between"
+              :class="isDark ? 'border-slate-800/80 text-slate-400' : 'border-slate-150 text-slate-500'"
+            >
+              <span>CCTV Stream - {{ t(liveCameraKey) }}</span>
+              <span class="text-red-500 font-black flex items-center gap-1">
+                <span class="relative flex h-1.5 w-1.5">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
+                </span>
+                {{ t('cctv_rec') }}
+              </span>
+            </div>
+
+            <div 
+              class="relative overflow-hidden rounded-xl border shadow-lg w-full h-[380px] flex items-center justify-center"
+              :class="isDark 
+                ? 'border-slate-850 bg-black' 
+                : 'border-slate-200 bg-slate-900'"
+            >
+              <!-- Zoomable CCTV image -->
+              <img
+                v-if="liveMode"
+                :src="mjpegUrl"
+                class="w-full h-full object-contain z-0 select-none pointer-events-auto transition-transform duration-100 ease-out"
+                :style="{
+                  transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
+                  cursor: zoomLevel > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default'
+                }"
+                alt="Live CCTV"
+                @dragstart.prevent
+                @mousedown="handleMouseDown"
+                @mousemove="handleMouseMove"
+                @mouseup="handleMouseUp"
+                @mouseleave="handleMouseUp"
+                @touchstart="handleTouchStart"
+                @touchmove="handleTouchMove"
+                @touchend="handleMouseUp"
+              />
+              <div
+                v-else
+                class="absolute inset-0 flex items-center justify-center text-[10px] font-black uppercase tracking-widest font-mono text-slate-500"
+              >
+                {{ t('cctv_live') }} 01
+              </div>
+
+              <!-- Static noise CCTV effect overlay -->
+              <div class="absolute inset-0 bg-cctv-scanlines z-10 pointer-events-none opacity-10"></div>
+
+              <!-- Floating Watermarks -->
+              <div class="absolute top-2 left-2 z-20 bg-slate-950/80 border border-slate-850 px-1.5 py-0.5 rounded text-[8px] font-mono text-slate-300">
+                <Eye class="w-2.5 h-2.5 inline text-cyan-500 mr-0.5" /> {{ t(liveCameraKey) }}
+              </div>
+              <div class="absolute bottom-2 left-2 z-20 font-mono text-[7px] text-slate-400 bg-slate-950/80 border border-slate-850 px-1.5 py-0.5 rounded">
+                2026-05-24 T{{ new Date().toTimeString().split(' ')[0] }}
+              </div>
+
+              <!-- Floating Zoom Controls overlay inside CCTV box -->
+              <div class="absolute bottom-2 right-2 z-20 flex gap-1.5">
+                <button 
+                  @click="zoomIn"
+                  class="w-5.5 h-5.5 flex items-center justify-center rounded border bg-slate-950/85 border-slate-800 hover:bg-slate-900/90 text-slate-350 hover:text-cyan-400 select-none cursor-pointer transition active:scale-90 shadow"
+                  title="Zoom In"
+                >
+                  <Plus class="w-3 h-3" />
+                </button>
+                <button 
+                  @click="zoomOut"
+                  class="w-5.5 h-5.5 flex items-center justify-center rounded border bg-slate-950/85 border-slate-800 hover:bg-slate-900/90 text-slate-350 hover:text-cyan-400 select-none cursor-pointer transition active:scale-90 shadow"
+                  title="Zoom Out"
+                >
+                  <Minus class="w-3 h-3" />
+                </button>
+                <button 
+                  @click="resetZoom"
+                  class="w-5.5 h-5.5 flex items-center justify-center rounded border bg-slate-950/85 border-slate-800 hover:bg-slate-900/90 text-slate-350 hover:text-cyan-400 select-none cursor-pointer transition active:scale-90 shadow"
+                  title="Reset Zoom"
+                >
+                  <Maximize class="w-3 h-3" />
+                </button>
+              </div>
+              
+              <span class="absolute w-full h-[1px] bg-cyan-500/10 top-0 left-0 animate-scanline pointer-events-none"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Normal Single view for Three.js Interactive Parking Lot -->
         <ThreeParkingLot 
+          v-else
           :slots="slots" 
           :is-data-loaded="initialDataLoaded"
           @select-slot="handleSelectSlot"
@@ -976,7 +1181,19 @@ onBeforeUnmount(() => {
           </span>
         </div>
 
+        <!-- Comparison Placeholder -->
+        <div v-if="comparisonMode" class="border border-dashed rounded-xl p-8 text-center text-xs bg-slate-950/5 border-slate-200 dark:bg-slate-950/20 dark:border-slate-850">
+          <p class="text-slate-500 font-bold uppercase tracking-wider">{{ locale === 'vi' ? 'Hệ thống đang hoạt động ở Chế độ Đối chiếu bên trên.' : 'System is currently operating in Comparison Mode above.' }}</p>
+          <button 
+            @click="scrollToSection('section-twin')"
+            class="mt-3 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-semibold select-none cursor-pointer bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 active:scale-95 transition"
+          >
+            {{ locale === 'vi' ? 'Xem màn hình Đối chiếu' : 'Go to Comparison view' }}
+          </button>
+        </div>
+
         <div
+          v-else
           class="relative overflow-hidden rounded-xl border shadow-lg transition duration-300 w-full aspect-video min-h-[360px] max-h-[80vh]"
           :class="isDark 
             ? 'border-slate-800 bg-black' 
@@ -1019,8 +1236,20 @@ onBeforeUnmount(() => {
             <img
               v-if="liveMode"
               :src="mjpegUrl"
-              class="w-full h-full object-contain z-0"
+              class="w-full h-full object-contain z-0 select-none pointer-events-auto transition-transform duration-100 ease-out"
+              :style="{
+                transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
+                cursor: zoomLevel > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default'
+              }"
               alt="Live CCTV"
+              @dragstart.prevent
+              @mousedown="handleMouseDown"
+              @mousemove="handleMouseMove"
+              @mouseup="handleMouseUp"
+              @mouseleave="handleMouseUp"
+              @touchstart="handleTouchStart"
+              @touchmove="handleTouchMove"
+              @touchend="handleMouseUp"
             />
             <div
               v-else
@@ -1028,6 +1257,32 @@ onBeforeUnmount(() => {
             >
               {{ t('cctv_live') }} 01
             </div>
+
+            <!-- Zoom Controls in Main CCTV -->
+            <div class="absolute bottom-3 right-3 z-20 flex gap-2">
+              <button 
+                @click="zoomIn"
+                class="w-6 h-6 flex items-center justify-center rounded border bg-slate-950/80 border-slate-800 hover:bg-slate-900/90 text-slate-350 hover:text-cyan-400 select-none cursor-pointer transition active:scale-90"
+                title="Zoom In"
+              >
+                <Plus class="w-3.5 h-3.5" />
+              </button>
+              <button 
+                @click="zoomOut"
+                class="w-6 h-6 flex items-center justify-center rounded border bg-slate-950/80 border-slate-800 hover:bg-slate-900/90 text-slate-350 hover:text-cyan-400 select-none cursor-pointer transition active:scale-90"
+                title="Zoom Out"
+              >
+                <Minus class="w-3.5 h-3.5" />
+              </button>
+              <button 
+                @click="resetZoom"
+                class="w-6 h-6 flex items-center justify-center rounded border bg-slate-950/80 border-slate-800 hover:bg-slate-900/90 text-slate-350 hover:text-cyan-400 select-none cursor-pointer transition active:scale-90"
+                title="Reset Zoom"
+              >
+                <Maximize class="w-3.5 h-3.5" />
+              </button>
+            </div>
+            
             <span class="absolute w-full h-[1px] bg-cyan-500/10 top-0 left-0 animate-scanline pointer-events-none"></span>
           </div>
         </div>

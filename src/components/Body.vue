@@ -5,7 +5,7 @@ import Sidebar from "./layout/Sidebar.vue"
 
 const isDark = inject<any>("isDark")
 
-const isCollapsed = ref(false)
+const isCollapsed = ref(localStorage.getItem('sidebar-collapsed') === 'true')
 const activeSection = ref("section-overview")
 const mainScrollRef = ref<HTMLElement | null>(null)
 
@@ -21,6 +21,7 @@ let observer: IntersectionObserver | null = null
 
 function toggleSidebar() {
   isCollapsed.value = !isCollapsed.value
+  localStorage.setItem('sidebar-collapsed', String(isCollapsed.value))
 }
 
 function scrollToSection(sectionId: string) {

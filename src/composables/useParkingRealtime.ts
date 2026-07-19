@@ -1,5 +1,5 @@
 import { ref, type Ref } from 'vue'
-import type { Slot } from '../module/type'
+import type { Slot, LogEntry } from '../module/type'
 import { withApiToken } from '../utils/api'
 import { getCookie } from '../utils/cookie'
 
@@ -14,6 +14,7 @@ let reconnectTimer: number | undefined
 let healthTimer: number | undefined
 let reconnectAttempt = 0
 let slotsRef: Ref<Slot[]> | null = null
+let logsRef: Ref<LogEntry[]> | null = null
 
 const carTypes = ['Sedan', 'SUV', 'Truck', 'EV']
 const carColors = ['Black', 'White', 'Silver', 'Blue', 'Red', 'Yellow', 'Green']
@@ -34,10 +35,28 @@ function parseTimestamp(dateStr: any): number | undefined {
   return isNaN(time) ? undefined : time
 }
 
+function formatTime(dateStr: any): string {
+  if (dateStr == null) return ''
+  try {
+    if (typeof dateStr === 'number') {
+      return new Date(dateStr).toTimeString().split(' ')[0]!
+    }
+    const str = String(dateStr)
+    const tIndex = str.indexOf('T')
+    if (tIndex !== -1) {
+      return str.substring(tIndex + 1, tIndex + 9)
+    }
+    const d = new Date(str)
+    return d.toTimeString().split(' ')[0]!
+  } catch (e) {
+    return ''
+  }
+}
+
 /**
  * Cập nhật trạng thái các slot dựa trên thông tin thời gian thực từ Spring Boot WebSocket
  */
-export function applyRealtimeMessage(payload: any, slots: Ref<Slot[]>) {
+export function applyRealtimeMessage(payload: any, slots: Ref<Slot[]>, logs?: Ref<LogEntry[]> | null) {
   if (!payload) return
 
   // 1. Phân tích để lấy danh sách records từ các định dạng khác nhau
@@ -142,11 +161,65 @@ export function applyRealtimeMessage(payload: any, slots: Ref<Slot[]>) {
       }
     }
   }
+
+  // Cập nhật lịch sử hoạt động nếu có
+  if (logs && payload && Array.isArray(payload.history)) {
+    const newLogs: LogEntry[] = payload.history
+      .map((item: any) => {
+        const id = item.frameId != null ? String(item.frameId) : String(Date.now() + Math.random())
+        const time = formatTime(item.timestamp || item.startDate)
+        const isOccupied = 
+          item.occupied === 1 || 
+          item.occupied === true || 
+          item.occupied === 'occupied' || 
+          item.occupied === 'busy' || 
+          item.occupied === 'OCCUPIED' ||
+          (item.status === 'active' && item.occupied !== 0)
+
+        // Lấy hoặc sinh màu và loại xe
+        let color = ''
+        let type = ''
+        const currentSlot = slots.value.find((s) => s.id === item.id)
+        if (currentSlot && currentSlot.carColor && currentSlot.carType) {
+          color = currentSlot.carColor
+          type = currentSlot.carType
+        } else {
+          color = randomChoice(carColors)
+          type = randomChoice(carTypes)
+        }
+
+        let message = ''
+        if (isOccupied) {
+          message = `Vehicle Detected: ${color} ${type} parked successfully in Slot ${item.id}.`
+        } else {
+          message = `Vehicle Departed: Slot ${item.id} has been vacated (${color} ${type} exited).`
+        }
+
+        return {
+          id,
+          time,
+          type: (isOccupied && type === 'EV' ? 'charge' : 'info') as any,
+          message
+        }
+      })
+      .sort((a, b) => {
+        const frameA = parseInt(a.id, 10)
+        const frameB = parseInt(b.id, 10)
+        if (!isNaN(frameA) && !isNaN(frameB)) {
+          return frameA - frameB
+        }
+        return a.time.localeCompare(b.time)
+      })
+
+    logs.value = newLogs.slice(-50)
+  }
 }
 
+
 export function useParkingRealtime() {
-  function connect(slots: Ref<Slot[]>) {
+  function connect(slots: Ref<Slot[]>, logs?: Ref<LogEntry[]>) {
     slotsRef = slots
+    logsRef = logs
 
     // Nếu đã kết nối hoặc đang kết nối thì không tạo thêm kết nối mới
     if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
@@ -181,7 +254,7 @@ export function useParkingRealtime() {
           const data = JSON.parse(event.data)
           console.log('[WebSocket ws/parking] Dữ liệu JSON đã phân tích:', data)
           if (slotsRef) {
-            applyRealtimeMessage(data, slotsRef)
+            applyRealtimeMessage(data, slotsRef, logsRef)
             initialDataLoaded.value = true
           }
         } catch (e) {
