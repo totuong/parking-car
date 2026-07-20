@@ -31,6 +31,11 @@ const t = inject<any>('t')
 // Simulation of hours in a day
 const timeOfDay = ref(12.0) // ranges from 0.00 to 23.99
 const autoSyncTime = ref(true)
+const showTimePanel = ref(localStorage.getItem('parking_twin_show_time_panel') !== 'false')
+
+watch(showTimePanel, (val) => {
+  localStorage.setItem('parking_twin_show_time_panel', String(val))
+})
 
 function formatHour(val: number): string {
   const h = Math.floor(val)
@@ -1883,6 +1888,61 @@ function setEntranceView() {
     controls.update()
   }
 }
+
+const isReloading = ref(false)
+
+function reload3D() {
+  isReloading.value = true
+  
+  // 1. Reset camera view
+  resetCamera()
+  
+  // 2. Clear selections & tooltip
+  tooltipData.value = null
+  emit('select-slot', null)
+  emit('hover-slot', null)
+
+  // 3. Clear all active animations and static cars
+  activeAnimations.value = []
+  active3dCars.forEach((car) => carsGroup.remove(car))
+  active3dCars.clear()
+  lastOccupiedStates.clear()
+
+  // 4. Re-sync 3D cars and indicator states
+  if (props.slots) {
+    props.slots.forEach(slot => {
+      lastOccupiedStates.set(slot.id, slot.occupied)
+      if (slot.occupied) {
+        const coords = getSlotCoords(slot.id)
+        const isNightVal = timeOfDay.value < 6.0 || timeOfDay.value > 18.0
+        const staticCar = createProceduralCar(slot.carColor || 'silver', slot.carType || 'Sedan', isNightVal)
+        staticCar.position.set(coords.x, coords.y, coords.z)
+        staticCar.rotation.y = coords.rotY
+        carsGroup.add(staticCar)
+        active3dCars.set(slot.id, staticCar)
+
+        const plane = slotIndicatorPlanes.get(slot.id)
+        if (plane) plane.visible = false
+        const sensor = slotSensorMeshes.get(slot.id)
+        if (sensor) sensor.visible = false
+      } else {
+        const plane = slotIndicatorPlanes.get(slot.id)
+        if (plane) plane.visible = true
+        const sensor = slotSensorMeshes.get(slot.id)
+        if (sensor) sensor.visible = true
+      }
+    })
+  }
+
+  // 5. Brief loading indicator animation
+  setTimeout(() => {
+    isReloading.value = false
+  }, 600)
+}
+
+defineExpose({
+  reload3D
+})
 </script>
 
 <template>
@@ -1895,7 +1955,7 @@ function setEntranceView() {
     <!-- Premium Loading Overlay -->
     <Transition name="fade">
       <div 
-        v-if="isLoading" 
+        v-if="isLoading || isReloading" 
         class="absolute inset-0 z-30 flex flex-col items-center justify-center backdrop-blur-md transition-all duration-500"
         :class="isDark ? 'bg-slate-950/90' : 'bg-white/90'"
       >
@@ -1906,10 +1966,10 @@ function setEntranceView() {
           </div>
           <div class="flex flex-col items-center text-center gap-1.5">
             <h3 class="text-xs font-black uppercase tracking-widest text-cyan-500">
-              {{ locale === 'vi' ? 'Khởi tạo Mô phỏng 3D...' : 'Initializing 3D Twin...' }}
+              {{ isReloading ? (locale === 'vi' ? 'Đang Tải Lại Mô Hình 3D...' : 'Reloading 3D Model...') : (locale === 'vi' ? 'Khởi tạo Mô phỏng 3D...' : 'Initializing 3D Twin...') }}
             </h3>
             <p class="text-[10px] text-slate-500 max-w-[220px]">
-              {{ locale === 'vi' ? 'Đang đồng bộ dữ liệu bãi đỗ xe và tối ưu hóa tài nguyên.' : 'Synchronizing parking lot data and optimizing assets.' }}
+              {{ locale === 'vi' ? 'Đang làm mới dữ liệu WebGL và lập bản đồ các ô đỗ xe.' : 'Refreshing WebGL assets and re-mapping parking slots.' }}
             </p>
           </div>
         </div>
@@ -1917,7 +1977,19 @@ function setEntranceView() {
     </Transition>
 
     <!-- Camera controls shortcut bar -->
-    <div class="absolute top-4 left-4 z-20 flex gap-2">
+    <div class="absolute top-4 left-4 z-20 flex gap-2 flex-wrap">
+      <button 
+        @click="reload3D" 
+        :disabled="isReloading"
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition shadow backdrop-blur-md cursor-pointer disabled:opacity-50 active:scale-95"
+        :class="isDark 
+          ? 'bg-slate-900/80 hover:bg-cyan-900/60 border-slate-700 hover:border-cyan-500 text-slate-300 hover:text-white' 
+          : 'bg-white/90 hover:bg-cyan-50/50 border-slate-200 hover:border-cyan-500 text-slate-600 hover:text-cyan-600'"
+        :title="locale === 'vi' ? 'Tải lại mô hình 3D' : 'Reload 3D Twin View'"
+      >
+        <i class="pi pi-refresh text-cyan-500" :class="{ 'animate-spin': isReloading }"></i>
+        <span>{{ locale === 'vi' ? 'Tải Lại 3D' : 'Reload 3D' }}</span>
+      </button>
       <button 
         @click="resetCamera" 
         class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition shadow backdrop-blur-md cursor-pointer"
@@ -1950,19 +2022,29 @@ function setEntranceView() {
       </button>
     </div>
 
-    <!-- Time of Day Control Panel in Top Right -->
+    <!-- Time of Day Control Panel in Top Right (With Popup Hide/Show toggle) -->
     <div 
+      v-if="showTimePanel"
       class="absolute top-4 right-4 z-20 flex flex-col gap-2 p-3 rounded-xl border backdrop-blur-md transition-all duration-300 shadow-lg text-xs"
       :class="isDark 
         ? 'bg-slate-950/80 border-slate-800 text-slate-200 shadow-cyan-950/10' 
         : 'bg-white/90 border-slate-200 text-slate-850 shadow-[0_4px_25px_rgba(0,0,0,0.03)]'"
     >
-      <div class="flex items-center justify-between gap-6 font-bold uppercase tracking-wider text-[10px]">
+      <div class="flex items-center justify-between gap-4 font-bold uppercase tracking-wider text-[10px]">
         <span class="flex items-center gap-1.5 text-cyan-600"><i class="pi pi-clock"></i> {{ t('time_of_day') }}</span>
-        <label class="flex items-center gap-1 cursor-pointer select-none">
-          <input type="checkbox" v-model="autoSyncTime" class="rounded accent-cyan-500 border-slate-300 w-3.5 h-3.5" />
-          <span class="text-[9px] uppercase tracking-normal" :class="isDark ? 'text-slate-400' : 'text-slate-500'">Auto</span>
-        </label>
+        <div class="flex items-center gap-2">
+          <label class="flex items-center gap-1 cursor-pointer select-none">
+            <input type="checkbox" v-model="autoSyncTime" class="rounded accent-cyan-500 border-slate-300 w-3.5 h-3.5" />
+            <span class="text-[9px] uppercase tracking-normal" :class="isDark ? 'text-slate-400' : 'text-slate-500'">Auto</span>
+          </label>
+          <button 
+            @click="showTimePanel = false" 
+            class="p-0.5 rounded transition cursor-pointer text-slate-400 hover:text-cyan-400"
+            :title="locale === 'vi' ? 'Ẩn bảng khung giờ' : 'Hide time panel'"
+          >
+            <i class="pi pi-eye-slash text-xs"></i>
+          </button>
+        </div>
       </div>
 
       <!-- Time Slider -->
@@ -2003,6 +2085,20 @@ function setEntranceView() {
         </button>
       </div>
     </div>
+
+    <!-- Time Panel Compact Trigger Button when Hidden -->
+    <button 
+      v-else
+      @click="showTimePanel = true"
+      class="absolute top-4 right-4 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border backdrop-blur-md transition-all duration-300 shadow-lg text-xs font-bold cursor-pointer active:scale-95"
+      :class="isDark 
+        ? 'bg-slate-950/80 hover:bg-slate-900 border-slate-800 text-cyan-400 hover:border-cyan-500/40' 
+        : 'bg-white/90 hover:bg-cyan-50/40 border-slate-200 text-cyan-600 hover:border-cyan-400'"
+      :title="locale === 'vi' ? 'Hiện bảng điều chỉnh khung giờ' : 'Show time panel'"
+    >
+      <i class="pi pi-clock text-cyan-500"></i>
+      <span>{{ t('time_of_day') }}</span>
+    </button>
 
     <!-- UI Overlay for instructions -->
     <div 

@@ -4,7 +4,7 @@ import { Slot, LogEntry } from '../module/type'
 import { 
   Car, Compass, Activity, Server, Play, Pause, RefreshCw,
   Video, Eye, TrendingUp, Clock, PieChart, Cpu, CheckCircle2, ChevronRight, Zap,
-  Plus, Minus, Maximize, Columns
+  Plus, Minus, Maximize, Columns, VideoOff, EyeOff, Sliders
 } from 'lucide-vue-next'
 import Chart from 'chart.js/auto'
 import ThreeParkingLot from './ThreeParkingLot.vue'
@@ -15,6 +15,26 @@ import { withApiToken } from '../utils/api'
 const isDark = inject<any>('isDark')
 const locale = inject<any>('locale')
 const t = inject<any>('t')
+
+// Camera & Telemetry Panel toggles (persisted in localStorage)
+const cctvEnabled = ref(localStorage.getItem('parking_twin_cctv_enabled') !== 'false')
+const showTelemetry = ref(localStorage.getItem('parking_twin_show_telemetry') !== 'false')
+
+watch(cctvEnabled, (val) => {
+  localStorage.setItem('parking_twin_cctv_enabled', String(val))
+})
+
+watch(showTelemetry, (val) => {
+  localStorage.setItem('parking_twin_show_telemetry', String(val))
+})
+
+function toggleCctv() {
+  cctvEnabled.value = !cctvEnabled.value
+}
+
+function toggleTelemetry() {
+  showTelemetry.value = !showTelemetry.value
+}
 
 function translateLogMessage(msg: string): string {
   if (msg.includes("Smart parking digital twin engine initialized")) {
@@ -78,6 +98,7 @@ const activeCameras = ref(1)
 const simulationActive = ref(false)
 
 const { connect, disconnect, liveMode, initialDataLoaded } = useParkingRealtime()
+const threeLotRef = ref<any>(null)
 // Bypass Vite buffering in dev: hit bridge MJPEG directly.
 const mjpegUrl = withApiToken(
   import.meta.env.DEV ? 'http://127.0.0.1:8000/api/stream/mjpeg' : '/api/stream/mjpeg'
@@ -848,9 +869,9 @@ onBeforeUnmount(() => {
     <section id="section-twin" class="section-anchor scroll-mt-6 rounded-2xl transition-shadow duration-300">
     <div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
       
-      <!-- 3D Map (Span 3 on large screens) / Comparison Layout -->
-      <div class="xl:col-span-3 flex flex-col gap-4">
-        <div class="flex items-center justify-between border-b pb-3" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
+      <!-- 3D Map (Span 3 when Telemetry panel is visible, Span 4 when hidden) / Comparison Layout -->
+      <div :class="showTelemetry ? 'xl:col-span-3' : 'xl:col-span-4'" class="flex flex-col gap-4 transition-all duration-300">
+        <div class="flex items-center justify-between border-b pb-3 flex-wrap gap-2" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
           <div>
             <h2 
               class="text-lg font-black tracking-wider uppercase flex items-center gap-2 transition-colors duration-300"
@@ -860,7 +881,18 @@ onBeforeUnmount(() => {
             </h2>
             <p class="text-xs" :class="isDark ? 'text-slate-500' : 'text-slate-500'">{{ t('twin_map_desc') }}</p>
           </div>
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 flex-wrap">
+            <!-- Reload 3D Button -->
+            <button 
+              @click="threeLotRef?.reload3D()" 
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold select-none cursor-pointer transition active:scale-95 shadow-sm"
+              :class="isDark ? 'bg-slate-900 border-slate-850 hover:bg-slate-850/80 text-slate-300' : 'bg-white border-slate-200 text-slate-650 hover:bg-slate-50 text-slate-600'"
+              :title="locale === 'vi' ? 'Tải lại mô hình 3D' : 'Reload 3D Twin View'"
+            >
+              <RefreshCw class="w-3.5 h-3.5 text-cyan-500" /> 
+              {{ locale === 'vi' ? 'Tải Lại 3D' : 'Reload 3D' }}
+            </button>
+
             <!-- Compare Mode Button -->
             <button 
               @click="toggleComparisonMode" 
@@ -873,6 +905,31 @@ onBeforeUnmount(() => {
               {{ comparisonMode ? (locale === 'vi' ? 'Đóng đối chiếu' : 'Close Compare') : (locale === 'vi' ? 'Đối chiếu 3D & Cam' : 'Compare 3D & Cam') }}
             </button>
 
+            <!-- CCTV Stream Toggle Button (Tắt Camera cho đỡ lag) -->
+            <button 
+              @click="toggleCctv" 
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold select-none cursor-pointer transition active:scale-95 shadow-sm"
+              :class="cctvEnabled 
+                ? (isDark ? 'bg-amber-950/30 border-amber-500/30 text-amber-400 hover:bg-amber-900/30' : 'bg-amber-50 border-amber-200 text-amber-600 hover:bg-amber-100') 
+                : (isDark ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/30' : 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100')"
+              :title="cctvEnabled ? t('cctv_turn_off') : t('cctv_turn_on')"
+            >
+              <component :is="cctvEnabled ? VideoOff : Video" class="w-3.5 h-3.5" /> 
+              {{ cctvEnabled ? t('cctv_turn_off') : t('cctv_turn_on') }}
+            </button>
+
+            <!-- Telemetry Panel Toggle Button (Ẩn/Hiện Thông Số Xe) -->
+            <button 
+              @click="toggleTelemetry" 
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold select-none cursor-pointer transition active:scale-95 shadow-sm"
+              :class="showTelemetry 
+                ? (isDark ? 'bg-cyan-950/40 border-cyan-500/30 text-cyan-400 hover:bg-cyan-900/30' : 'bg-cyan-50 border-cyan-200 text-cyan-600 hover:bg-cyan-100') 
+                : (isDark ? 'bg-slate-900 border-slate-850 hover:bg-slate-850/80 text-slate-400 hover:text-slate-200' : 'bg-white border-slate-200 text-slate-500 hover:text-slate-700')"
+            >
+              <Sliders class="w-3.5 h-3.5" /> 
+              {{ showTelemetry ? t('toggle_telemetry_hide') : t('toggle_telemetry_show') }}
+            </button>
+
             <!-- Simulation Status indicator -->
             <div 
               class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded border text-[10px] uppercase font-bold transition-all duration-300"
@@ -881,16 +938,6 @@ onBeforeUnmount(() => {
               <span class="w-2 h-2 rounded-full inline-block" :class="simulationActive ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'"></span>
               {{ simulationActive ? t('sim_active') : t('sim_paused') }}
             </div>
-            <button 
-              @click="toggleSimulation" 
-              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold select-none cursor-pointer transition active:scale-95 shadow-sm"
-              :class="simulationActive 
-                ? (isDark ? 'bg-red-950/20 border-red-500/30 text-red-400 hover:bg-red-900/20' : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100') 
-                : (isDark ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/20' : 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100')"
-            >
-              <component :is="simulationActive ? Pause : Play" class="w-3.5 h-3.5" /> 
-              {{ simulationActive ? t('pause_sim') : t('resume_sim') }}
-            </button>
           </div>
         </div>
 
@@ -907,6 +954,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="w-full h-[380px] rounded-xl overflow-hidden relative border" :class="isDark ? 'border-slate-850' : 'border-slate-200'">
               <ThreeParkingLot 
+                ref="threeLotRef"
                 :slots="slots" 
                 :is-data-loaded="initialDataLoaded"
                 @select-slot="handleSelectSlot"
@@ -918,17 +966,30 @@ onBeforeUnmount(() => {
           <!-- CCTV Stream Panel -->
           <div class="flex flex-col gap-2">
             <div 
-              class="text-[9px] font-mono font-bold uppercase tracking-wider border-b pb-1.5 flex justify-between"
+              class="text-[9px] font-mono font-bold uppercase tracking-wider border-b pb-1.5 flex justify-between items-center"
               :class="isDark ? 'border-slate-800/80 text-slate-400' : 'border-slate-150 text-slate-500'"
             >
-              <span>CCTV Stream - {{ t(liveCameraKey) }}</span>
-              <span class="text-red-500 font-black flex items-center gap-1">
-                <span class="relative flex h-1.5 w-1.5">
-                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
-                </span>
-                {{ t('cctv_rec') }}
+              <span class="flex items-center gap-1.5">
+                <Video class="w-3 h-3 text-cyan-400" /> CCTV Stream - {{ t(liveCameraKey) }}
               </span>
+              <div class="flex items-center gap-2">
+                <button 
+                  @click="toggleCctv"
+                  class="px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border transition cursor-pointer"
+                  :class="cctvEnabled 
+                    ? 'bg-amber-950/40 border-amber-500/30 text-amber-400 hover:bg-amber-900/40' 
+                    : 'bg-emerald-950/40 border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/40'"
+                >
+                  {{ cctvEnabled ? t('cctv_turn_off') : t('cctv_turn_on') }}
+                </button>
+                <span v-if="cctvEnabled" class="text-red-500 font-black flex items-center gap-1">
+                  <span class="relative flex h-1.5 w-1.5">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
+                  </span>
+                  {{ t('cctv_rec') }}
+                </span>
+              </div>
             </div>
 
             <div 
@@ -937,75 +998,96 @@ onBeforeUnmount(() => {
                 ? 'border-slate-850 bg-black' 
                 : 'border-slate-200 bg-slate-900'"
             >
-              <!-- Zoomable CCTV image -->
-              <img
-                v-if="liveMode"
-                :src="mjpegUrl"
-                class="w-full h-full object-contain z-0 select-none pointer-events-auto transition-transform duration-100 ease-out"
-                :style="{
-                  transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
-                  cursor: zoomLevel > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default'
-                }"
-                alt="Live CCTV"
-                @dragstart.prevent
-                @mousedown="handleMouseDown"
-                @mousemove="handleMouseMove"
-                @mouseup="handleMouseUp"
-                @mouseleave="handleMouseUp"
-                @touchstart="handleTouchStart"
-                @touchmove="handleTouchMove"
-                @touchend="handleMouseUp"
-              />
-              <div
-                v-else
-                class="absolute inset-0 flex items-center justify-center text-[10px] font-black uppercase tracking-widest font-mono text-slate-500"
-              >
-                {{ t('cctv_live') }} 01
+              <!-- Zoomable CCTV image when Camera is ON -->
+              <template v-if="cctvEnabled">
+                <img
+                  v-if="liveMode"
+                  :src="mjpegUrl"
+                  class="w-full h-full object-contain z-0 select-none pointer-events-auto transition-transform duration-100 ease-out"
+                  :style="{
+                    transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
+                    cursor: zoomLevel > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default'
+                  }"
+                  alt="Live CCTV"
+                  @dragstart.prevent
+                  @mousedown="handleMouseDown"
+                  @mousemove="handleMouseMove"
+                  @mouseup="handleMouseUp"
+                  @mouseleave="handleMouseUp"
+                  @touchstart="handleTouchStart"
+                  @touchmove="handleTouchMove"
+                  @touchend="handleMouseUp"
+                />
+                <div
+                  v-else
+                  class="absolute inset-0 flex items-center justify-center text-[10px] font-black uppercase tracking-widest font-mono text-slate-500"
+                >
+                  {{ t('cctv_live') }} 01
+                </div>
+
+                <!-- Static noise CCTV effect overlay -->
+                <div class="absolute inset-0 bg-cctv-scanlines z-10 pointer-events-none opacity-10"></div>
+
+                <!-- Floating Watermarks -->
+                <div class="absolute top-2 left-2 z-20 bg-slate-950/80 border border-slate-850 px-1.5 py-0.5 rounded text-[8px] font-mono text-slate-300">
+                  <Eye class="w-2.5 h-2.5 inline text-cyan-500 mr-0.5" /> {{ t(liveCameraKey) }}
+                </div>
+                <div class="absolute bottom-2 left-2 z-20 font-mono text-[7px] text-slate-400 bg-slate-950/80 border border-slate-850 px-1.5 py-0.5 rounded">
+                  2026-05-24 T{{ new Date().toTimeString().split(' ')[0] }}
+                </div>
+
+                <!-- Floating Zoom Controls overlay inside CCTV box -->
+                <div class="absolute bottom-2 right-2 z-20 flex gap-1.5">
+                  <button 
+                    @click="zoomIn"
+                    class="w-5.5 h-5.5 flex items-center justify-center rounded border bg-slate-950/85 border-slate-800 hover:bg-slate-900/90 text-slate-350 hover:text-cyan-400 select-none cursor-pointer transition active:scale-90 shadow"
+                    title="Zoom In"
+                  >
+                    <Plus class="w-3 h-3" />
+                  </button>
+                  <button 
+                    @click="zoomOut"
+                    class="w-5.5 h-5.5 flex items-center justify-center rounded border bg-slate-950/85 border-slate-800 hover:bg-slate-900/90 text-slate-350 hover:text-cyan-400 select-none cursor-pointer transition active:scale-90 shadow"
+                    title="Zoom Out"
+                  >
+                    <Minus class="w-3 h-3" />
+                  </button>
+                  <button 
+                    @click="resetZoom"
+                    class="w-5.5 h-5.5 flex items-center justify-center rounded border bg-slate-950/85 border-slate-800 hover:bg-slate-900/90 text-slate-350 hover:text-cyan-400 select-none cursor-pointer transition active:scale-90 shadow"
+                    title="Reset Zoom"
+                  >
+                    <Maximize class="w-3 h-3" />
+                  </button>
+                </div>
+                
+                <span class="absolute w-full h-[1px] bg-cyan-500/10 top-0 left-0 animate-scanline pointer-events-none"></span>
+              </template>
+
+              <!-- Camera OFF / Performance Saving Placeholder -->
+              <div v-else class="flex flex-col items-center justify-center p-6 text-center gap-3">
+                <div class="p-3.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-inner animate-pulse">
+                  <VideoOff class="w-8 h-8" />
+                </div>
+                <div>
+                  <h4 class="text-xs font-black uppercase tracking-wider text-slate-200">{{ t('cctv_disabled_title') }}</h4>
+                  <p class="text-[10px] text-slate-500 max-w-xs mt-1 leading-relaxed">{{ t('cctv_disabled_desc') }}</p>
+                </div>
+                <button 
+                  @click="toggleCctv" 
+                  class="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold bg-cyan-950/40 border-cyan-500/40 text-cyan-400 hover:bg-cyan-900/50 cursor-pointer transition active:scale-95 shadow"
+                >
+                  <Video class="w-3.5 h-3.5" /> {{ t('cctv_turn_on') }}
+                </button>
               </div>
 
-              <!-- Static noise CCTV effect overlay -->
-              <div class="absolute inset-0 bg-cctv-scanlines z-10 pointer-events-none opacity-10"></div>
-
-              <!-- Floating Watermarks -->
-              <div class="absolute top-2 left-2 z-20 bg-slate-950/80 border border-slate-850 px-1.5 py-0.5 rounded text-[8px] font-mono text-slate-300">
-                <Eye class="w-2.5 h-2.5 inline text-cyan-500 mr-0.5" /> {{ t(liveCameraKey) }}
-              </div>
-              <div class="absolute bottom-2 left-2 z-20 font-mono text-[7px] text-slate-400 bg-slate-950/80 border border-slate-850 px-1.5 py-0.5 rounded">
-                2026-05-24 T{{ new Date().toTimeString().split(' ')[0] }}
-              </div>
-
-              <!-- Floating Zoom Controls overlay inside CCTV box -->
-              <div class="absolute bottom-2 right-2 z-20 flex gap-1.5">
-                <button 
-                  @click="zoomIn"
-                  class="w-5.5 h-5.5 flex items-center justify-center rounded border bg-slate-950/85 border-slate-800 hover:bg-slate-900/90 text-slate-350 hover:text-cyan-400 select-none cursor-pointer transition active:scale-90 shadow"
-                  title="Zoom In"
-                >
-                  <Plus class="w-3 h-3" />
-                </button>
-                <button 
-                  @click="zoomOut"
-                  class="w-5.5 h-5.5 flex items-center justify-center rounded border bg-slate-950/85 border-slate-800 hover:bg-slate-900/90 text-slate-350 hover:text-cyan-400 select-none cursor-pointer transition active:scale-90 shadow"
-                  title="Zoom Out"
-                >
-                  <Minus class="w-3 h-3" />
-                </button>
-                <button 
-                  @click="resetZoom"
-                  class="w-5.5 h-5.5 flex items-center justify-center rounded border bg-slate-950/85 border-slate-800 hover:bg-slate-900/90 text-slate-350 hover:text-cyan-400 select-none cursor-pointer transition active:scale-90 shadow"
-                  title="Reset Zoom"
-                >
-                  <Maximize class="w-3 h-3" />
-                </button>
-              </div>
-              
-              <span class="absolute w-full h-[1px] bg-cyan-500/10 top-0 left-0 animate-scanline pointer-events-none"></span>
             </div>
           </div>
         </div>
 
         <!-- Normal Single view for Three.js Interactive Parking Lot -->
         <ThreeParkingLot 
+          ref="threeLotRef"
           v-else
           :slots="slots" 
           :is-data-loaded="initialDataLoaded"
@@ -1014,16 +1096,26 @@ onBeforeUnmount(() => {
         />
       </div>
 
-      <!-- Holographic Interactive Telemetry Inspector Panel -->
-      <div class="flex flex-col gap-4">
-        <div class="border-b pb-3" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
-          <h2 
-            class="text-lg font-black tracking-wider uppercase flex items-center gap-2 transition-colors duration-300"
-            :class="isDark ? 'text-cyan-400' : 'text-cyan-600'"
+      <!-- Holographic Interactive Telemetry Inspector Panel (Show/Hide toggleable) -->
+      <div v-if="showTelemetry" class="flex flex-col gap-4 transition-all duration-300">
+        <div class="border-b pb-3 flex items-center justify-between" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
+          <div>
+            <h2 
+              class="text-lg font-black tracking-wider uppercase flex items-center gap-2 transition-colors duration-300"
+              :class="isDark ? 'text-cyan-400' : 'text-cyan-600'"
+            >
+              <Activity class="w-5 h-5" /> {{ t('slot_telemetry') }}
+            </h2>
+            <p class="text-xs" :class="isDark ? 'text-slate-500' : 'text-slate-400'">{{ t('slot_telemetry_desc') }}</p>
+          </div>
+          <button 
+            @click="showTelemetry = false"
+            class="p-1 rounded-lg border transition duration-200 cursor-pointer text-slate-400 hover:text-cyan-400"
+            :class="isDark ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-slate-100 border-slate-200 hover:bg-slate-200'"
+            :title="t('toggle_telemetry_hide')"
           >
-            <Activity class="w-5 h-5" /> {{ t('slot_telemetry') }}
-          </h2>
-          <p class="text-xs" :class="isDark ? 'text-slate-500' : 'text-slate-400'">{{ t('slot_telemetry_desc') }}</p>
+            <EyeOff class="w-4 h-4" />
+          </button>
         </div>
 
         <!-- Telemetry Panel Body -->
@@ -1161,7 +1253,7 @@ onBeforeUnmount(() => {
 
     <!-- SECTION B: CCTV Feed -->
     <section id="section-cctv" class="section-anchor scroll-mt-6 rounded-2xl transition-shadow duration-300 flex flex-col gap-4">
-        <div class="border-b pb-3 flex justify-between items-center" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
+        <div class="border-b pb-3 flex justify-between items-center flex-wrap gap-2" :class="isDark ? 'border-slate-800' : 'border-slate-200'">
           <div>
             <h2 
               class="text-lg font-black tracking-wider uppercase flex items-center gap-2 transition-colors duration-300"
@@ -1171,14 +1263,26 @@ onBeforeUnmount(() => {
             </h2>
             <p class="text-xs text-slate-500">{{ t('cctv_desc') }}</p>
           </div>
-          <span 
-            class="text-[10px] font-mono font-black border px-2 py-0.5 rounded uppercase transition-colors duration-300"
-            :class="isDark 
-              ? 'text-cyan-400 bg-cyan-950/40 border-cyan-500/20' 
-              : 'text-cyan-600 bg-cyan-50 border-cyan-200'"
-          >
-            {{ t('cctv_streaming') }}
-          </span>
+          <div class="flex items-center gap-3">
+            <button 
+              @click="toggleCctv" 
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold select-none cursor-pointer transition active:scale-95 shadow-sm"
+              :class="cctvEnabled 
+                ? (isDark ? 'bg-amber-950/30 border-amber-500/30 text-amber-400 hover:bg-amber-900/30' : 'bg-amber-50 border-amber-200 text-amber-600 hover:bg-amber-100') 
+                : (isDark ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/30' : 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100')"
+            >
+              <component :is="cctvEnabled ? VideoOff : Video" class="w-3.5 h-3.5" /> 
+              {{ cctvEnabled ? t('cctv_turn_off') : t('cctv_turn_on') }}
+            </button>
+            <span 
+              class="text-[10px] font-mono font-black border px-2 py-0.5 rounded uppercase transition-colors duration-300"
+              :class="cctvEnabled 
+                ? (isDark ? 'text-cyan-400 bg-cyan-950/40 border-cyan-500/20' : 'text-cyan-600 bg-cyan-50 border-cyan-200')
+                : (isDark ? 'text-amber-400 bg-amber-950/40 border-amber-500/20' : 'text-amber-600 bg-amber-50 border-amber-200')"
+            >
+              {{ cctvEnabled ? t('cctv_streaming') : (locale === 'vi' ? 'ĐÃ TẮT STREAM' : 'STREAM OFF') }}
+            </span>
+          </div>
         </div>
 
         <!-- Comparison Placeholder -->
@@ -1192,8 +1296,9 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
+        <!-- Camera Player View when Camera is ON -->
         <div
-          v-else
+          v-else-if="cctvEnabled"
           class="relative overflow-hidden rounded-xl border shadow-lg transition duration-300 w-full aspect-video min-h-[360px] max-h-[80vh]"
           :class="isDark 
             ? 'border-slate-800 bg-black' 
@@ -1285,6 +1390,31 @@ onBeforeUnmount(() => {
             
             <span class="absolute w-full h-[1px] bg-cyan-500/10 top-0 left-0 animate-scanline pointer-events-none"></span>
           </div>
+        </div>
+
+        <!-- Camera OFF / Performance Mode Placeholder when in Section B -->
+        <div 
+          v-else 
+          class="relative overflow-hidden rounded-xl border shadow-lg transition duration-300 w-full min-h-[320px] flex flex-col items-center justify-center p-8 text-center gap-4"
+          :class="isDark ? 'border-slate-800 bg-slate-950/80' : 'border-slate-200 bg-white/70'"
+        >
+          <div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 animate-pulse">
+            <VideoOff class="w-10 h-10" />
+          </div>
+          <div>
+            <h3 class="text-sm font-black uppercase tracking-wider" :class="isDark ? 'text-slate-200' : 'text-slate-800'">
+              {{ t('cctv_disabled_title') }}
+            </h3>
+            <p class="text-xs text-slate-500 max-w-md mt-1 leading-relaxed">
+              {{ t('cctv_disabled_desc') }}
+            </p>
+          </div>
+          <button 
+            @click="toggleCctv" 
+            class="flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-bold bg-cyan-950/40 border-cyan-500/40 text-cyan-400 hover:bg-cyan-900/50 cursor-pointer transition active:scale-95 shadow-md"
+          >
+            <Video class="w-4 h-4" /> {{ t('cctv_turn_on') }}
+          </button>
         </div>
     </section>
 
