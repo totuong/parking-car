@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, nextTick, computed, watch, inject } from 'vue'
-import { Slot, LogEntry } from '../module/type'
+import type { Slot, LogEntry } from '../module/type'
 import { 
   Car, Compass, Activity, Server, Play, Pause, RefreshCw,
   Video, Eye, TrendingUp, Clock, PieChart, Cpu, CheckCircle2, ChevronRight, Zap,
@@ -10,7 +10,7 @@ import Chart from 'chart.js/auto'
 import ThreeParkingLot from './ThreeParkingLot.vue'
 import { useParkingRealtime } from '../composables/useParkingRealtime'
 import { fetchParkingAnalytics, type ParkingAnalytics } from '../module/analytics'
-import { withApiToken } from '../utils/api'
+import { withSignedUrl } from '../utils/api'
 
 const isDark = inject<any>('isDark')
 const locale = inject<any>('locale')
@@ -100,9 +100,23 @@ const simulationActive = ref(false)
 const { connect, disconnect, liveMode, initialDataLoaded } = useParkingRealtime()
 const threeLotRef = ref<any>(null)
 // Bypass Vite buffering in dev: hit bridge MJPEG directly.
-const mjpegUrl = withApiToken(
-  import.meta.env.DEV ? 'http://127.0.0.1:8000/api/stream/mjpeg' : '/api/stream/mjpeg'
-)
+const mjpegUrl = ref('')
+const mjpegBaseUrl = import.meta.env.DEV ? 'http://127.0.0.1:8000/api/stream/mjpeg' : '/api/stream/mjpeg'
+let mjpegReconnectTimer: number | undefined
+let mjpegReconnectPending = false
+
+function refreshMjpegUrl() {
+  if (mjpegReconnectPending) return
+  mjpegReconnectPending = true
+  if (mjpegReconnectTimer) window.clearTimeout(mjpegReconnectTimer)
+
+  mjpegReconnectTimer = window.setTimeout(() => {
+    void withSignedUrl(mjpegBaseUrl).then((url) => {
+      mjpegUrl.value = url
+      mjpegReconnectPending = false
+    })
+  }, 500)
+}
 
 // Selected Slot for Telemetry details
 const selectedSlot = ref<Slot | null>(null)
@@ -735,6 +749,7 @@ watch(logs, () => {
 
 onMounted(() => {
   initSlots()
+  refreshMjpegUrl()
   connect(slots, logs)
   // Don't block 3D / UI on slow analytics — mark ready immediately in live mode.
   if (liveMode.value) {
@@ -762,6 +777,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   disconnect()
+  if (mjpegReconnectTimer) window.clearTimeout(mjpegReconnectTimer)
   if (arrivalTimer) clearTimeout(arrivalTimer)
   if (departureTimer) clearTimeout(departureTimer)
   if (analyticsTimer) clearInterval(analyticsTimer)
@@ -1009,6 +1025,7 @@ onBeforeUnmount(() => {
                     cursor: zoomLevel > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default'
                   }"
                   alt="Live CCTV"
+                  @error="refreshMjpegUrl"
                   @dragstart.prevent
                   @mousedown="handleMouseDown"
                   @mousemove="handleMouseMove"

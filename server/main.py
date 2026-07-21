@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from analytics import fetch_analytics_summary
-from auth import is_auth_enabled, require_api_key
+from auth import is_auth_enabled, require_hmac_query, require_hmac_signature
 from frame_resolver import FrameResolver, IndexedFrame
 from frame_state import FrameState
 from mjpeg_stream import create_mjpeg_response
@@ -189,9 +189,9 @@ async def lifespan(app: FastAPI):
     frame_state.bind_loop(loop)
 
     if is_auth_enabled():
-        logger.info("API auth enabled; CORS origins=%s", CORS_ORIGINS)
+        logger.info("HMAC auth enabled; CORS origins=%s", CORS_ORIGINS)
     else:
-        logger.warning("API auth disabled (API_SECRET not set)")
+        logger.warning("HMAC auth disabled (IOT_DEVICE_SECRETS not set)")
 
     if stream_enabled:
         stream_task = asyncio.create_task(run_camera_stream(), name="camera-mjpeg-consumer")
@@ -253,12 +253,17 @@ async def health():
 
 
 @app.get("/api/analytics/summary")
-async def analytics_summary(_: None = Depends(require_api_key)):
+async def analytics_summary(_: None = Depends(require_hmac_signature)):
     return fetch_analytics_summary()
 
 
+@app.get("/api/stream/mjpeg")
+async def stream_mjpeg(_: None = Depends(require_hmac_query)):
+    return create_mjpeg_response(frame_state)
+
+
 @app.get("/api/telemetry/latest")
-async def telemetry_latest(_: None = Depends(require_api_key)):
+async def telemetry_latest(_: None = Depends(require_hmac_signature)):
     snapshot = frame_state.snapshot()
     return {
         "frame_id": snapshot.frame_id,
@@ -272,14 +277,14 @@ async def telemetry_latest(_: None = Depends(require_api_key)):
 @app.post("/api/telemetry/frame")
 async def ingest_frame(
     frame_message: FrameMessage,
-    _: None = Depends(require_api_key),
+    _: None = Depends(require_hmac_signature),
 ):
     await process_frame_message(frame_message)
     return {"ok": True, "frame_id": frame_message.frame_id}
 
 
 @app.get("/api/frames/{source_frame_id}.jpg")
-async def get_frame(source_frame_id: str, _: None = Depends(require_api_key)):
+async def get_frame(source_frame_id: str, _: None = Depends(require_hmac_signature)):
     path = frame_resolver.get_indexed_path(source_frame_id)
     if not path or not path.is_file():
         snapshot = frame_state.snapshot()
@@ -288,8 +293,3 @@ async def get_frame(source_frame_id: str, _: None = Depends(require_api_key)):
         return Response(status_code=404, content="Frame not found")
 
     return Response(content=path.read_bytes(), media_type="image/jpeg")
-
-
-@app.get("/api/stream/mjpeg")
-async def stream_mjpeg(_: None = Depends(require_api_key)):
-    return create_mjpeg_response(frame_state)
