@@ -7,8 +7,9 @@ import Login from "./components/Login.vue";
 import { translations } from "./utils/translations";
 import { useParkingRealtime } from "./composables/useParkingRealtime";
 import { getCookie, deleteCookie } from "./utils/cookie";
+import { logoutApi } from "./utils/api";
 
-const { isConnected, mqttConnected, disconnect } = useParkingRealtime();
+const { isConnected, mqttConnected, disconnect, registerAuthErrorCallback } = useParkingRealtime();
 
 const isDark = ref(false);
 const toggleTheme = () => {
@@ -25,16 +26,34 @@ const t = (key: string): string => {
 };
 
 const authToken = ref<string | null>(null);
+const expiredNotice = ref<string>('');
 
 onMounted(() => {
   authToken.value = getCookie('token');
+
+  // Lắng nghe sự kiện lỗi Token/Hết hạn từ WebSocket
+  registerAuthErrorCallback((reason) => {
+    expiredNotice.value = reason || (locale.value === 'vi' 
+      ? 'Phiên đăng nhập đã hết hạn hoặc kết nối không hợp lệ. Vui lòng đăng nhập lại!' 
+      : 'Session expired or invalid connection. Please log in again!');
+    handleLogout();
+  });
 });
 
 const handleLoginSuccess = (token: string) => {
   authToken.value = token;
+  expiredNotice.value = '';
 };
 
-const handleLogout = () => {
+const handleLogout = async () => {
+  const currentToken = authToken.value || getCookie('token');
+  if (currentToken) {
+    try {
+      await logoutApi(currentToken);
+    } catch (e) {
+      console.warn('Lỗi khi gọi API logout:', e);
+    }
+  }
   deleteCookie('token');
   authToken.value = null;
   disconnect();
@@ -63,8 +82,8 @@ const handleRefresh = () => {
     class="min-h-screen flex flex-col font-sans select-none overflow-hidden transition-colors duration-300"
     :class="isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'"
   >
-    <div v-if="!authToken" class="flex-1 flex items-center justify-center bg-slate-950">
-      <Login @login-success="handleLoginSuccess" />
+    <div v-if="!authToken" class="flex-1 flex items-center justify-center bg-slate-950 p-4">
+      <Login :expired-notice="expiredNotice" @login-success="handleLoginSuccess" />
     </div>
     <template v-else>
       <Header />

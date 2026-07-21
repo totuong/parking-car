@@ -216,6 +216,22 @@ export function applyRealtimeMessage(payload: any, slots: Ref<Slot[]>, logs?: Re
 }
 
 
+type AuthErrorCallback = (reason?: string) => void
+let authErrorCallbacks: AuthErrorCallback[] = []
+
+export function registerAuthErrorCallback(cb: AuthErrorCallback) {
+  authErrorCallbacks.push(cb)
+  return () => {
+    authErrorCallbacks = authErrorCallbacks.filter((c) => c !== cb)
+  }
+}
+
+function triggerAuthError(reason?: string) {
+  console.warn('[WebSocket Auth Error]', reason)
+  const cbs = [...authErrorCallbacks]
+  cbs.forEach((cb) => cb(reason))
+}
+
 export function useParkingRealtime() {
   function connect(slots: Ref<Slot[]>, logs?: Ref<LogEntry[]>) {
     slotsRef = slots
@@ -252,6 +268,28 @@ export function useParkingRealtime() {
         try {
           console.log('[WebSocket ws/parking] Tin nhắn thô nhận được:', event.data)
           const data = JSON.parse(event.data)
+
+          // Kiểm tra nếu tin nhắn trả về chứa lỗi xác thực hoặc token hết hạn
+          if (data && (
+            data.status === 401 ||
+            data.status === 403 ||
+            (typeof data.error === 'string' && (
+              data.error.toLowerCase().includes('token') || 
+              data.error.toLowerCase().includes('unauthorized') || 
+              data.error.toLowerCase().includes('thu hồi') ||
+              data.error.toLowerCase().includes('expired')
+            )) ||
+            (typeof data.message === 'string' && (
+              data.message.toLowerCase().includes('token') || 
+              data.message.toLowerCase().includes('unauthorized') || 
+              data.message.toLowerCase().includes('thu hồi') || 
+              data.message.toLowerCase().includes('hết hạn')
+            ))
+          )) {
+            triggerAuthError(data.message || data.error || 'Token đã hết hạn hoặc bị thu hồi!')
+            return
+          }
+
           console.log('[WebSocket ws/parking] Dữ liệu JSON đã phân tích:', data)
           if (slotsRef) {
             applyRealtimeMessage(data, slotsRef, logsRef)
@@ -263,10 +301,25 @@ export function useParkingRealtime() {
       }
 
       socket.onclose = (event) => {
+        const wasConnected = isConnected.value
         isConnected.value = false
         mqttConnected.value = false
         initialDataLoaded.value = false
         console.log('Đã ngắt kết nối với native WebSocket. Code:', event.code, 'Reason:', event.reason)
+
+        // Phân tích mã đóng hoặc lý do đóng liên quan đến auth
+        const isAuthCode = event.code === 1008 || event.code === 4001 || event.code === 4003 || event.code === 4000
+        const isAuthReason = event.reason && (
+          event.reason.toLowerCase().includes('token') || 
+          event.reason.toLowerCase().includes('auth') || 
+          event.reason.toLowerCase().includes('unauthorized') ||
+          event.reason.toLowerCase().includes('thu hồi')
+        )
+
+        if (isAuthCode || isAuthReason) {
+          triggerAuthError(event.reason || 'Kết nối WebSocket bị ngắt do Token không hợp lệ hoặc đã hết hạn!')
+          return
+        }
 
         // Tự động kết nối lại sau 5 giây nếu connect() vẫn còn hiệu lực
         if (slotsRef) {
@@ -281,6 +334,11 @@ export function useParkingRealtime() {
 
       socket.onerror = (error) => {
         console.error('Lỗi WebSocket:', error)
+        const token = getCookie('token')
+        if (token && !isConnected.value) {
+          // Báo lỗi kết nối WS nếu không thể khởi tạo kết nối thành công với token
+          triggerAuthError('Kết nối WebSocket bị lỗi (Token có thể đã hết hạn hoặc không hợp lệ)')
+        }
       }
     }
 
@@ -317,5 +375,7 @@ export function useParkingRealtime() {
     connect,
     disconnect,
     applyRealtimeMessage,
+    registerAuthErrorCallback,
   }
 }
+

@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { ref, inject } from 'vue'
 import { getCookie, setCookie } from '../utils/cookie'
-import { User, Lock, Cpu, Eye, EyeOff, Loader2 } from 'lucide-vue-next'
+import { User, Lock, Cpu, Eye, EyeOff, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-vue-next'
+import Register from './Register.vue'
+
+const props = defineProps<{
+  expiredNotice?: string
+}>()
 
 const emit = defineEmits<{
   (e: 'login-success', token: string): void
@@ -11,11 +16,21 @@ const isDark = inject<any>('isDark')
 const t = inject<any>('t')
 const locale = inject<any>('locale')
 
+const isRegisterView = ref(false)
 const username = ref('')
 const password = ref('')
 const showPassword = ref(false)
 const isLoading = ref(false)
 const errorMessage = ref('')
+const successNotice = ref('')
+
+const handleRegisterSuccess = (registeredUsername: string) => {
+  isRegisterView.value = false
+  username.value = registeredUsername
+  successNotice.value = locale.value === 'vi' 
+    ? `Đăng ký thành công tài khoản "${registeredUsername}"! Vui lòng đăng nhập.` 
+    : `Account "${registeredUsername}" registered successfully! Please log in.`
+}
 
 const handleLogin = async () => {
   if (!username.value || !password.value) {
@@ -68,7 +83,14 @@ const handleLogin = async () => {
 </script>
 
 <template>
+  <Register 
+    v-if="isRegisterView"
+    @switch-to-login="isRegisterView = false"
+    @register-success="handleRegisterSuccess"
+  />
+
   <div 
+    v-else
     class="relative w-full max-w-md p-8 rounded-2xl border backdrop-blur-xl shadow-2xl transition-all duration-300 group"
     :class="isDark 
       ? 'border-cyan-500/20 bg-slate-950/90 shadow-cyan-950/30 text-slate-100' 
@@ -85,7 +107,7 @@ const handleLogin = async () => {
     />
 
     <!-- Header / Brand -->
-    <div class="flex flex-col items-center mb-8 text-center">
+    <div class="flex flex-col items-center mb-6 text-center">
       <div 
         class="relative flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br mb-4 transition-all duration-300 shadow-lg"
         :class="isDark 
@@ -112,10 +134,34 @@ const handleLogin = async () => {
       </p>
     </div>
 
+    <!-- Token Expired / Session Warning Banner -->
+    <div 
+      v-if="props.expiredNotice" 
+      class="mb-5 p-3.5 rounded-xl border flex items-start gap-2.5 text-xs font-semibold"
+      :class="isDark 
+        ? 'bg-amber-950/40 border-amber-500/40 text-amber-400 shadow-inner' 
+        : 'bg-amber-50 border-amber-300 text-amber-700'"
+    >
+      <AlertTriangle class="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+      <span>{{ props.expiredNotice }}</span>
+    </div>
+
+    <!-- Success message Alert after registration -->
+    <div 
+      v-if="successNotice" 
+      class="mb-5 p-3.5 rounded-xl border flex items-start gap-2.5 text-xs font-semibold"
+      :class="isDark 
+        ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-400' 
+        : 'bg-emerald-50 border-emerald-200 text-emerald-600'"
+    >
+      <CheckCircle2 class="w-4 h-4 text-emerald-500 shrink-0" />
+      <span>{{ successNotice }}</span>
+    </div>
+
     <!-- Error message Alert -->
     <div 
       v-if="errorMessage" 
-      class="mb-6 p-4 rounded-xl border flex items-start gap-2.5 text-xs font-semibold animate-shake"
+      class="mb-5 p-4 rounded-xl border flex items-start gap-2.5 text-xs font-semibold animate-shake"
       :class="isDark 
         ? 'bg-red-950/30 border-red-500/30 text-red-400 shadow-inner' 
         : 'bg-red-50 border-red-200 text-red-600'"
@@ -200,6 +246,18 @@ const handleLogin = async () => {
         <Loader2 v-if="isLoading" class="w-4.5 h-4.5 animate-spin" />
         <span>{{ isLoading ? (locale === 'vi' ? 'Đang đăng nhập...' : 'Logging In...') : (locale === 'vi' ? 'Đăng nhập' : 'Log In') }}</span>
       </button>
+
+      <!-- Switch to Register view -->
+      <div class="mt-2 text-center">
+        <button 
+          type="button"
+          @click="isRegisterView = true"
+          class="text-xs font-semibold hover:underline cursor-pointer transition-colors"
+          :class="isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-cyan-600 hover:text-cyan-700'"
+        >
+          {{ locale === 'vi' ? 'Chưa có tài khoản? Đăng ký ngay' : 'Don\'t have an account? Register now' }}
+        </button>
+      </div>
     </form>
   </div>
 </template>
@@ -215,3 +273,4 @@ const handleLogin = async () => {
   animation: shake 0.5s ease-in-out;
 }
 </style>
+
